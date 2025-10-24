@@ -1,4 +1,4 @@
-#python3.10.9
+#python3.11.9
 
 fastapi
 uvicorn[standard]
@@ -8,3 +8,5 @@ yfinance
 pydantic[email]
 passlib==1.7.4
 bcrypt==3.2.0
+react-toastify
+react-loading-skeleton

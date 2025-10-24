@@ -1,6 +1,14 @@
+// src/App.js
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+
+// --- START: ADDED CODE FROM PREVIOUS STEP ---
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+// --- END: ADDED CODE FROM PREVIOUS STEP ---
+
 
 // Page Imports
 import Disclaimer from './pages/Disclaimer';
@@ -15,7 +23,9 @@ import Leaderboard from './pages/Leaderboard';
 
 // Component Imports
 import Header from './components/Header';
+// --- ADD THIS LINE ---
 import Footer from './components/Footer';
+// --- END OF CHANGE ---
 import Sidebar from './components/Sidebar'; // Assuming you still have Sidebar.js
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -33,6 +43,18 @@ function App() {
 function AppContent() {
   return (
     <>
+      <ToastContainer
+        position="bottom-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
       <Header />
       {/* <Sidebar />  You can uncomment this if you're using it */}
       <main style={{ flex: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>

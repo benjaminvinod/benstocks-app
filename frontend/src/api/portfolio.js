@@ -81,3 +81,33 @@ export const getLeaderboard = async (limit = 10) => {
     throw error.response?.data || error;
   }
 };
+
+export const getWatchlist = async (userId) => {
+  try {
+    const response = await axios.get(`${BASE_URL}/portfolio/watchlist/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching watchlist:", error);
+    throw error.response?.data || error;
+  }
+};
+
+export const addToWatchlist = async (userId, symbol) => {
+  try {
+    const response = await axios.post(`${BASE_URL}/portfolio/watchlist/${userId}`, { symbol });
+    return response.data;
+  } catch (error) {
+    console.error("Error adding to watchlist:", error);
+    throw error.response?.data || error;
+  }
+};
+
+export const removeFromWatchlist = async (userId, symbol) => {
+  try {
+    const response = await axios.delete(`${BASE_URL}/portfolio/watchlist/${userId}/${symbol}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error removing from watchlist:", error);
+    throw error.response?.data || error;
+  }
+};

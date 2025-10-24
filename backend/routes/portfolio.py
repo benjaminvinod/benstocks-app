@@ -6,6 +6,7 @@ from database import portfolio_collection, users_collection, transactions_collec
 from utils.fetch_data import fetch_stock_data
 from utils.currency import get_exchange_rate
 from bson import ObjectId
+from typing import Dict
 
 router = APIRouter()
 
@@ -215,3 +216,44 @@ async def get_live_portfolio_value(user_id: str):
         "total_portfolio_value_inr": round(total_portfolio_value_inr, 2),
         "errors": fetch_errors # Optionally return errors
     }
+
+@router.get("/watchlist/{user_id}")
+async def get_watchlist(user_id: str):
+    """Fetches the user's watchlist, which is stored in the user document."""
+    user = users_collection.find_one(
+        {"_id": ObjectId(user_id)},
+        {"watchlist": 1} # Only fetch the watchlist field
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user.get("watchlist", []) # Return watchlist or empty list
+
+@router.post("/watchlist/{user_id}")
+async def add_to_watchlist(user_id: str, stock: Dict[str, str]):
+    """Adds a stock symbol to the user's watchlist."""
+    symbol = stock.get("symbol")
+    if not symbol:
+        raise HTTPException(status_code=400, detail="Stock symbol is required")
+
+    # Use $addToSet to prevent duplicate symbols
+    result = users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$addToSet": {"watchlist": symbol.upper()}}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"message": f"{symbol.upper()} added to watchlist"}
+
+@router.delete("/watchlist/{user_id}/{symbol}")
+async def remove_from_watchlist(user_id: str, symbol: str):
+    """Removes a stock symbol from the user's watchlist."""
+    result = users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$pull": {"watchlist": symbol.upper()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {"message": f"{symbol.upper()} removed from watchlist"}
