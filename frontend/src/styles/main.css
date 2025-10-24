@@ -1,0 +1,121 @@
+/* === BenStocks Dark Theme === */
+
+:root {
+  --bg-dark-primary: #1a202c;  /* Deep dark blue/charcoal */
+  --bg-dark-secondary: #2d3748; /* Lighter charcoal for surfaces */
+  --border-color: #4a5568;      /* Subtle border */
+  --text-primary: #edf2f7;      /* Soft white */
+  --text-secondary: #a0aec0;   /* Muted gray for secondary text */
+  --brand-primary: #4299e1;     /* Vibrant blue for links/buttons */
+  --brand-hover: #63b3ed;      /* Lighter blue for hover */
+  --danger: #e53e3e;           /* Red for errors */
+}
+
+/* --- Global Styles --- */
+body, html, #root {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-dark-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+    margin-top: 0;
+}
+
+p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+a {
+    color: var(--brand-primary);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+a:hover {
+    color: var(--brand-hover);
+    text-decoration: underline;
+}
+
+/* --- Form Elements --- */
+button {
+    background-color: var(--brand-primary);
+    border: none;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+button:hover {
+    background-color: var(--brand-hover);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+button:disabled {
+  background-color: var(--border-color);
+  cursor: not-allowed;
+}
+
+input,
+select {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--bg-dark-secondary);
+    color: var(--text-primary);
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    width: 100%;
+    box-sizing: border-box; /* Ensures padding doesn't affect width */
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
+}
+
+/* --- Layout & Component Stubs --- */
+.container {
+  width: 90%;
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background-color: var(--bg-dark-secondary);
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.page-header {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
