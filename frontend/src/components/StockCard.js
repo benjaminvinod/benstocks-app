@@ -1,14 +1,18 @@
+// src/components/StockCard.js
+
 import React, { useState } from 'react';
 import { formatCurrency, formatDate } from '../utils/format';
-import { useAuth } from '../context/AuthContext'; // Import useAuth
+import { useAuth } from '../context/AuthContext';
 import { sellInvestment } from '../api/portfolio';
+import { toast } from 'react-toastify'; // Make sure toast is imported
 
-// fetchPortfolio is passed from Dashboard to refresh the list
-function StockCard({ investment, fetchPortfolio }) {
-  const { user, refreshUser } = useAuth(); // Get the logged-in user
+// --- START: MODIFIED CODE ---
+// The component now accepts `liveDetails` as a prop
+function StockCard({ investment, fetchPortfolio, liveDetails }) {
+// --- END: MODIFIED CODE ---
+  const { user, refreshUser } = useAuth();
   
   const [showSell, setShowSell] = useState(false);
-  // Default sell quantity to the total owned for convenience
   const [quantityToSell, setQuantityToSell] = useState(investment.quantity); 
   const [sellError, setSellError] = useState('');
   const [sellLoading, setSellLoading] = useState(false);
@@ -19,65 +23,96 @@ function StockCard({ investment, fetchPortfolio }) {
     setSellError('');
 
     if (!user || !user.id) {
-        setSellError('User not logged in.');
+        toast.error('User not logged in.');
         setSellLoading(false);
         return;
     }
 
     const qty = Number(quantityToSell);
-    // Use a small tolerance for floating point comparisons
     if (isNaN(qty) || qty <= 1e-9 || qty > investment.quantity + 1e-9) { 
-      setSellError(`Invalid quantity (Max: ${investment.quantity.toFixed(4)}).`);
+      toast.error(`Invalid quantity (Max: ${investment.quantity.toFixed(4)}).`);
       setSellLoading(false);
       return;
     }
 
     try {
-      // Pass the logged-in user's ID, the investment's unique ID, and quantity
-      await sellInvestment(user.id, investment.id, qty); 
+      await sellInvestment(user.id, investment.id, qty);
+      toast.success('Investment sold successfully!');
       
-      // Refresh balance (AuthContext) and portfolio list (Dashboard)
       await refreshUser(); 
       await fetchPortfolio(); 
       
-      // Don't necessarily close form, user might want to sell more/less later
-      // setShowSell(false); 
-      // Instead, just clear errors and maybe reset quantity if needed
-      setQuantityToSell(0); // Reset quantity after successful sell
-
+      setShowSell(false); // Close form on successful sell
     } catch (err) {
-      setSellError(err.detail || err.message || "Sell failed.");
+      toast.error(err.detail || err.message || "Sell failed.");
     }
     setSellLoading(false);
   };
+  
+  const cardStyle = {
+    background: 'var(--bg-dark-secondary)',
+    padding: '1.5rem',
+    borderRadius: '12px',
+    border: '1px solid var(--border-color)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem'
+  };
 
-  const cardStyle = { /* ... */ }; 
+  const pStyle = {
+    margin: 0,
+    display: 'flex',
+    justifyContent: 'space-between',
+    color: 'var(--text-secondary)'
+  };
+  
+  const spanStyle = {
+    color: 'var(--text-primary)',
+    fontWeight: '600'
+  };
+
   const currencyCode = (investment.symbol?.toUpperCase().endsWith('.NS') || investment.symbol?.toUpperCase().endsWith('.BO')) ? 'INR' : 'USD';
+  
+  // --- START: MODIFIED CODE ---
+  // Calculations for Profit & Loss
+  const currentValue = liveDetails ? liveDetails.live_value_inr : null;
+  const buyValue = investment.buy_cost_inr || 0;
+  const profitLoss = currentValue !== null ? currentValue - buyValue : null;
+  const profitLossPercent = buyValue > 0 && profitLoss !== null ? (profitLoss / buyValue) * 100 : 0;
+
+  const profitLossColor = profitLoss > 0 ? '#48BB78' : '#E53E3E'; // Green for profit, red for loss
+  // --- END: MODIFIED CODE ---
 
   return (
     <div style={cardStyle}>
-      <h3 /* ... */>{investment.symbol?.toUpperCase()}</h3>
-      <p /* ... */>
-        <span>Quantity:</span> {investment.quantity?.toFixed(4)}
-      </p>
-      <p /* ... */>
-        <span>Buy Price:</span> {formatCurrency(investment.buy_price, currencyCode)}
-      </p>
-      {investment.buy_cost_inr && (
-         <p /* ... */>
-             <span>Cost (INR):</span> {formatCurrency(investment.buy_cost_inr, 'INR')}
-         </p>
+      <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)' }}>{investment.symbol?.toUpperCase()}</h3>
+      <p style={pStyle}>Quantity: <span style={spanStyle}>{investment.quantity?.toFixed(4)}</span></p>
+      <p style={pStyle}>Buy Price: <span style={spanStyle}>{formatCurrency(investment.buy_price, currencyCode)}</span></p>
+      <p style={pStyle}>Invested (INR): <span style={spanStyle}>{formatCurrency(buyValue, 'INR')}</span></p>
+      
+      {/* --- START: MODIFIED CODE --- */}
+      {/* New section to display live values */}
+      <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }} />
+      {currentValue !== null ? (
+        <>
+            <p style={pStyle}>Current Value: <span style={spanStyle}>{formatCurrency(currentValue, 'INR')}</span></p>
+            <p style={pStyle}>
+                Profit/Loss:
+                <span style={{ ...spanStyle, color: profitLossColor }}>
+                    {profitLoss >= 0 ? '+' : ''}{formatCurrency(profitLoss, 'INR')} ({profitLossPercent.toFixed(2)}%)
+                </span>
+            </p>
+        </>
+      ) : (
+        <p style={pStyle}>Current Value: <span style={spanStyle}>Loading...</span></p>
       )}
-      <p /* ... */>
-        <span>Buy Date:</span> {formatDate(investment.buy_date)}
-      </p>
+      {/* --- END: MODIFIED CODE --- */}
       
       <button 
         onClick={() => {
             setShowSell(!showSell);
-            // Reset quantity input when opening/closing
-            if (!showSell) setQuantityToSell(investment.quantity); 
-            setSellError(''); // Clear error when toggling
+            if (!showSell) setQuantityToSell(investment.quantity);
+            setSellError('');
         }}
         style={{ width: '100%', marginTop: '1rem', backgroundColor: showSell ? 'var(--border-color)' : 'var(--danger)' }}
       >
@@ -98,7 +133,6 @@ function StockCard({ investment, fetchPortfolio }) {
               required
             />
           </div>
-          {sellError && <p style={{ color: 'var(--danger)' }}>{sellError}</p>}
           <button type="submit" disabled={sellLoading} style={{ width: '100%' }}>
             {sellLoading ? 'Processing...' : `Confirm Sell`}
           </button>

@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Dict
 from datetime import datetime
 from models.portfolio_model import PortfolioDB, Investment, Transaction, SellRequest
 from database import portfolio_collection, users_collection, transactions_collection
 from utils.fetch_data import fetch_stock_data
 from utils.currency import get_exchange_rate
 from bson import ObjectId
-from typing import Dict
 
 router = APIRouter()
 
@@ -177,6 +176,7 @@ async def get_live_portfolio_value(user_id: str):
     portfolio = get_portfolio(user_id) # Reuse existing helper
     
     total_investment_value_inr = 0.0
+    investment_details = {} # This new dictionary will hold the detailed values
     fetch_errors = []
 
     for investment in portfolio.investments:
@@ -203,6 +203,10 @@ async def get_live_portfolio_value(user_id: str):
                     value_inr = investment.buy_cost_inr if investment.buy_cost_inr else 0
             
             total_investment_value_inr += value_inr
+            # Add the detailed value for this specific investment to our dictionary
+            investment_details[investment.id] = {
+                "live_value_inr": round(value_inr, 2)
+            }
             
         except Exception as e:
             fetch_errors.append(f"Error processing {investment.symbol}: {e}")
@@ -214,8 +218,10 @@ async def get_live_portfolio_value(user_id: str):
         "cash_balance_inr": user_doc["balance"],
         "total_investment_value_inr": round(total_investment_value_inr, 2),
         "total_portfolio_value_inr": round(total_portfolio_value_inr, 2),
-        "errors": fetch_errors # Optionally return errors
+        "investment_details": investment_details, # Return the new detailed dictionary
+        "errors": fetch_errors
     }
+
 
 @router.get("/watchlist/{user_id}")
 async def get_watchlist(user_id: str):

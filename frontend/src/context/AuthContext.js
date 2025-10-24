@@ -1,3 +1,5 @@
+// src/context/AuthContext.js
+
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { login as apiLogin, signup as apiSignup, getMe } from '../api/auth';
 import axios from 'axios';
@@ -6,74 +8,38 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Keep true to prevent flicker on protected routes
 
-  // --- REFINED: Function to fetch and set user data ---
-  // useCallback prevents this function from changing on every render
+  // This function fetches the latest user data after a login or refresh.
   const fetchAndSetUser = useCallback(async (userId, token) => {
     try {
-      const response = await getMe(userId); // Fetch latest data from backend
-      const updatedUser = { ...response.user, token }; // Add token back (backend doesn't store it)
+      const response = await getMe(userId);
+      const updatedUser = { ...response.user, token };
       
       setUser(updatedUser);
-      localStorage.setItem('benstocks_user', JSON.stringify(updatedUser));
+      localStorage.setItem('benstocks_user', JSON.stringify(updatedUser)); // We still save it for refreshUser
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      console.log("User data fetched/refreshed:", updatedUser);
-      return updatedUser; // Return the user data
+      return updatedUser;
     } catch (error) {
       console.error("Failed to fetch user data, logging out.", error);
-      logout(); // Log out if fetching fails (e.g., bad token/user ID)
+      logout();
       return null;
     }
-  }, []); // Empty dependency array means this function is created once
+  }, []);
 
-  // --- REFINED: Initial load effect ---
+  // This useEffect now ONLY sets loading to false. It no longer auto-logs in.
   useEffect(() => {
-    let isMounted = true; // Flag to prevent state updates if component unmounts quickly
-    setLoading(true); // Ensure loading is true at the start
-    
-    try {
-      const storedUserString = localStorage.getItem('benstocks_user');
-      if (storedUserString) {
-        const storedUser = JSON.parse(storedUserString);
-        if (storedUser?.id && storedUser?.token) {
-          // Instead of just setting the stored user, fetch the LATEST data
-          fetchAndSetUser(storedUser.id, storedUser.token).then(latestUser => {
-            if (isMounted && !latestUser) {
-              // If fetch failed and logged out, ensure loading is finished
-              setLoading(false);
-            } else if (isMounted) {
-               setLoading(false); // Finish loading after successful fetch
-            }
-          });
-        } else {
-          // Invalid stored user data
-          localStorage.removeItem('benstocks_user');
-          if (isMounted) setLoading(false);
-        }
-      } else {
-        // No user stored
-         if (isMounted) setLoading(false);
-      }
-    } catch (error) {
-      console.error("Failed during initial user load", error);
-      localStorage.removeItem('benstocks_user');
-      if (isMounted) setLoading(false);
-    }
-
-    return () => {
-      isMounted = false; // Cleanup function for when component unmounts
-    };
-  }, [fetchAndSetUser]); // Rerun if fetchAndSetUser changes (shouldn't with useCallback)
+    // By removing the localStorage check here, the app will always start
+    // with `user` as null, forcing a login for protected routes.
+    setLoading(false);
+  }, []);
 
 
   const login = async (email, password) => {
     try {
       const response = await apiLogin({ email, password });
-      const userData = response.user; 
-      
-      // Use fetchAndSetUser to ensure consistency
-      await fetchAndSetUser(userData.id, userData.token); 
+      const userData = response.user;
+      await fetchAndSetUser(userData.id, userData.token);
       return true;
     } catch (error) {
       console.error("Login failed:", error);
@@ -82,7 +48,6 @@ export function AuthProvider({ children }) {
   };
 
   const signup = async (username, email, password) => {
-    // Signup logic remains the same...
     try {
       await apiSignup({ username, email, password });
       await login(email, password); // This will call fetchAndSetUser
@@ -100,12 +65,21 @@ export function AuthProvider({ children }) {
     console.log("User logged out.");
   };
 
-  // --- REFINED: Use fetchAndSetUser for refresh ---
+  // refreshUser still works by grabbing the last known user from localStorage if needed
   const refreshUser = useCallback(async () => {
-    if (!user?.id || !user?.token) return; // No user/token to refresh with
+    let currentUser = user;
+    if (!currentUser) {
+        const storedUserString = localStorage.getItem('benstocks_user');
+        if (storedUserString) {
+            currentUser = JSON.parse(storedUserString);
+        }
+    }
+    
+    if (!currentUser?.id || !currentUser?.token) return;
+    
     console.log("Attempting to refresh user...");
-    await fetchAndSetUser(user.id, user.token);
-  }, [user, fetchAndSetUser]); // Recreate if user or fetch function changes
+    await fetchAndSetUser(currentUser.id, currentUser.token);
+  }, [user, fetchAndSetUser]);
 
   const value = { user, isAuthenticated: !!user, loading, login, signup, logout, refreshUser };
 
