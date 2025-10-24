@@ -1,3 +1,5 @@
+# utils/fetch_data.py
+
 import yfinance as yf
 import time
 
@@ -31,6 +33,8 @@ def fetch_stock_data(symbol: str):
         # --- THIS IS THE CURRENCY FIX ---
         currency = "INR" if symbol.upper().endswith((".NS", ".BO")) else info.get("currency", "USD")
 
+        # --- START: MODIFIED CODE ---
+        # We are adding more fields from the `info` dictionary provided by yfinance
         data = {
             "symbol": symbol.upper(),
             "name": info.get("longName", "N/A"),
@@ -38,7 +42,14 @@ def fetch_stock_data(symbol: str):
             "high": round(latest_data["High"], 2),
             "low": round(latest_data["Low"], 2),
             "close": round(latest_data["Close"], 2),
-            "currency": currency, # Use our fixed currency
+            "currency": currency,
+            
+            # --- NEW FIELDS ---
+            "market_cap": info.get("marketCap"),
+            "pe_ratio": info.get("trailingPE"),
+            "dividend_yield": info.get("dividendYield"),
+            "week_52_high": info.get("fiftyTwoWeekHigh"),
+            "week_52_low": info.get("fiftyTwoWeekLow"),
         }
 
         stock_data_cache[symbol] = (data, current_time)

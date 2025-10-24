@@ -1,8 +1,8 @@
-// format.js
+// src/utils/format.js
 
 // Format number as currency (e.g., ₹1,00,000 or $150.00)
 export const formatCurrency = (amount, currencyCode = 'INR') => {
-  if (typeof amount !== 'number') {
+  if (typeof amount !== 'number' || isNaN(amount)) {
     amount = 0;
   }
   
@@ -13,8 +13,6 @@ export const formatCurrency = (amount, currencyCode = 'INR') => {
     minimumFractionDigits: 2,
   };
   
-  // Use 'en-IN' for Indian Rupees to get lakhs/crores formatting
-  // Use 'en-US' for all other currencies
   const locale = currencyCode.toUpperCase() === 'INR' ? 'en-IN' : 'en-US';
 
   return new Intl.NumberFormat(locale, options).format(amount);
@@ -32,4 +30,24 @@ export const formatDate = (dateString) => {
   } catch (error) {
     return "Invalid Date";
   }
+};
+
+// This new function formats very large numbers into a short format (B for billion, T for trillion)
+export const formatLargeNumber = (num) => {
+    if (num === null || num === undefined || isNaN(num)) {
+      return 'N/A';
+    }
+    if (num >= 1e12) {
+      return (num / 1e12).toFixed(2) + 'T';
+    }
+    if (num >= 1e9) {
+      return (num / 1e9).toFixed(2) + 'B';
+    }
+    if (num >= 1e6) {
+      return (num / 1e6).toFixed(2) + 'M';
+    }
+    if (num >= 1e3) {
+      return (num / 1e3).toFixed(2) + 'K';
+    }
+    return num.toString();
 };

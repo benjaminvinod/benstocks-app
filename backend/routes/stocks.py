@@ -19,17 +19,22 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
         if data.get("error"):
             raise HTTPException(status_code=404, detail=data["error"])
 
-        # This is the corrected mapping.
-        # It now correctly uses "high", "low", "close"
-        # to match what fetch_data.py provides.
+        # This mapping now includes all the new fields from our updated fetch_data function
         stock_data = {
             "symbol": data.get("symbol"),
             "name": data.get("name"),
             "open": data.get("open"),
-            "high": data.get("high"),     # <-- Was data.get("dayHigh")
-            "low": data.get("low"),      # <-- Was data.get("dayLow")
-            "close": data.get("close"),    # <-- Was data.get("previousClose")
-            "currency": data.get("currency")
+            "high": data.get("high"),
+            "low": data.get("low"),
+            "close": data.get("close"),
+            "currency": data.get("currency"),
+
+            # --- NEW FIELDS ---
+            "market_cap": data.get("market_cap"),
+            "pe_ratio": data.get("pe_ratio"),
+            "dividend_yield": data.get("dividend_yield"),
+            "week_52_high": data.get("week_52_high"),
+            "week_52_low": data.get("week_52_low"),
         }
 
         # Check if any crucial values are missing after mapping
