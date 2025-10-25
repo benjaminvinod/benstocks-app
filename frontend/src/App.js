@@ -3,12 +3,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-
-// --- START: ADDED CODE FROM PREVIOUS STEP ---
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-// --- END: ADDED CODE FROM PREVIOUS STEP ---
-
 
 // Page Imports
 import Disclaimer from './pages/Disclaimer';
@@ -20,13 +16,14 @@ import Signup from './pages/Signup';
 import MutualFunds from './pages/MutualFunds';
 import Transactions from './pages/Transactions';
 import Leaderboard from './pages/Leaderboard';
+// --- START: ADDED CODE ---
+import TermsOfService from './pages/TermsOfService';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+// --- END: ADDED CODE ---
 
 // Component Imports
 import Header from './components/Header';
-// --- ADD THIS LINE ---
 import Footer from './components/Footer';
-// --- END OF CHANGE ---
-import Sidebar from './components/Sidebar'; // Assuming you still have Sidebar.js
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -39,10 +36,9 @@ function App() {
   );
 }
 
-// We extract the content to a new component so it can use the `useAuth` hook
 function AppContent() {
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <ToastContainer
         position="bottom-right"
         autoClose={5000}
@@ -56,7 +52,6 @@ function AppContent() {
         theme="dark"
       />
       <Header />
-      {/* <Sidebar />  You can uncomment this if you're using it */}
       <main style={{ flex: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>
         <Routes>
           {/* Public Routes */}
@@ -66,6 +61,10 @@ function AppContent() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          {/* --- START: ADDED CODE --- */}
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          {/* --- END: ADDED CODE --- */}
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
@@ -80,7 +79,7 @@ function AppContent() {
         </Routes>
       </main>
       <Footer />
-    </>
+    </div>
   );
 }
 
