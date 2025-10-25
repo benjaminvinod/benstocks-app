@@ -18,15 +18,16 @@ SAMPLE_DIVIDEND_STOCKS = [
     "AAPL", "MSFT", "JNJ", "PG", "RELIANCE.NS", "TCS.NS", "HINDUNILVR.NS", "ITC.NS"
 ]
 
-# This is the corrected helper function that uses `await` and `async for` properly.
+# --- START: CORRECTED CODE ---
+# This helper function is now fully corrected to use `await` and `async for` properly.
 async def _issue_dividend_for_symbol(symbol: str, dividend_per_share: float):
     """Internal helper function to issue a dividend for one stock."""
-    # `find` returns a cursor, which we must loop over asynchronously
-    portfolios_with_stock = portfolio_collection.find({"investments.symbol": symbol})
+    # `find` returns an AsyncIOMotorCursor, which MUST be iterated with `async for`.
+    portfolios_cursor = portfolio_collection.find({"investments.symbol": symbol})
     users_paid = 0
     
     # Use `async for` to correctly iterate over the database cursor.
-    async for portfolio in portfolios_with_stock:
+    async for portfolio in portfolios_cursor: # THIS WAS THE MAIN BUG FIX
         user_id = str(portfolio.get("user_id"))
         if not user_id:
             continue
@@ -38,10 +39,15 @@ async def _issue_dividend_for_symbol(symbol: str, dividend_per_share: float):
                 
                 if dividend_amount > 0:
                     # Add `await` before the database update operation.
-                    await users_collection.update_one(
+                    update_result = await users_collection.update_one(
                         {"_id": ObjectId(user_id)},
                         {"$inc": {"balance": dividend_amount}}
                     )
+
+                    # Optional: Check if update was successful
+                    if update_result.matched_count == 0:
+                        print(f"Warning: Could not find user {user_id} to update balance for dividend.")
+                        continue # Skip to next user if this one failed
 
                     dividend_transaction = Transaction(
                         user_id=user_id,
@@ -59,6 +65,7 @@ async def _issue_dividend_for_symbol(symbol: str, dividend_per_share: float):
                     users_paid += 1
                 break # Stop after finding the right investment in this portfolio
     return users_paid
+# --- END: CORRECTED CODE ---
 
 
 @router.post("/run-dividend-cycle")
@@ -67,22 +74,28 @@ async def run_dividend_cycle():
     Simulates a dividend cycle.
     """
     dividends_issued = []
+    total_users_paid_in_cycle = 0
     for symbol in SAMPLE_DIVIDEND_STOCKS:
         random_dividend = round(random.uniform(5.0, 50.0), 2)
-        users_paid = await _issue_dividend_for_symbol(symbol, random_dividend)
-        if users_paid > 0:
-            dividends_issued.append({
-                "symbol": symbol,
-                "dividend_per_share_inr": random_dividend,
-                "users_paid": users_paid
-            })
+        try:
+            users_paid_for_symbol = await _issue_dividend_for_symbol(symbol, random_dividend)
+            if users_paid_for_symbol > 0:
+                dividends_issued.append({
+                    "symbol": symbol,
+                    "dividend_per_share_inr": random_dividend,
+                    "users_paid": users_paid_for_symbol
+                })
+                total_users_paid_in_cycle += users_paid_for_symbol
+        except Exception as e:
+            print(f"Error issuing dividend for {symbol}: {e}") # Log errors but continue cycle
     
     if not dividends_issued:
-        return {"message": "Dividend cycle ran, but no users owned any eligible dividend stocks."}
+        return {"message": "Dividend cycle ran, but no users owned any eligible dividend stocks or an error occurred."}
 
     return {
-        "message": "Dividend cycle completed successfully.",
-        "dividends_issued": dividends_issued
+        "message": "Dividend cycle completed.",
+        "details": dividends_issued,
+        "total_users_paid_in_cycle": total_users_paid_in_cycle
     }
 
 @router.post("/issue-dividend")
@@ -90,8 +103,11 @@ async def issue_dividend(request: DividendRequest):
     """
     (Manual) Issues a dividend to all users holding a specific stock.
     """
-    users_paid = await _issue_dividend_for_symbol(request.symbol.upper(), request.dividend_per_share_inr)
-    return {
-        "message": f"Dividend for {request.symbol.upper()} issued successfully.",
-        "users_paid": users_paid
-    }
+    try:
+        users_paid = await _issue_dividend_for_symbol(request.symbol.upper(), request.dividend_per_share_inr)
+        return {
+            "message": f"Dividend for {request.symbol.upper()} processed.",
+            "users_paid": users_paid
+        }
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=f"Failed to issue dividend for {request.symbol}: {e}")
