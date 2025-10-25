@@ -94,4 +94,4 @@ async def issue_dividend(request: DividendRequest):
     return {
         "message": f"Dividend for {request.symbol.upper()} issued successfully.",
         "users_paid": users_paid
-    }
+    
