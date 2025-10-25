@@ -13,6 +13,5 @@ DB_NAME = "benstocks_db"
 # Default fake money balance for new users
 DEFAULT_BALANCE = 100000  # ₹100,000
 
-# Stock API configuration (example using Yahoo Finance or Alpha Vantage)
-STOCK_API_KEY = ""  # Add your key here if using Alpha Vantage
-STOCK_API_URL = "https://www.alphavantage.co/query"  # or other API endpoint
+# Alpha Vantage API Key for Mutual Fund NAVs
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")

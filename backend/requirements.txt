@@ -12,3 +12,4 @@ react-toastify
 react-loading-skeleton
 react-joyride
 websockets
+requests

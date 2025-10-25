@@ -1,9 +1,7 @@
-// src/App.js
-
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { WebSocketProvider } from './context/WebSocketContext'; // Import the WebSocket provider
+import { WebSocketProvider } from './context/WebSocketContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -15,6 +13,7 @@ import StockDetails from './pages/StockDetails';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import MutualFunds from './pages/MutualFunds';
+import ETFs from './pages/ETFs'; // Import the ETFs page
 import Transactions from './pages/Transactions';
 import Leaderboard from './pages/Leaderboard';
 import TermsOfService from './pages/TermsOfService';
@@ -27,7 +26,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
-    // Wrap the entire app, first with Auth, then with WebSocket
     <AuthProvider>
       <WebSocketProvider>
         <Router>
@@ -42,7 +40,6 @@ function App() {
 function AppContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {/* Toast container for notifications */}
       <ToastContainer
         position="bottom-right"
         autoClose={5000}
@@ -55,9 +52,7 @@ function AppContent() {
         pauseOnHover
         theme="dark"
       />
-      {/* Header component */}
       <Header />
-      {/* Main content area where pages are rendered */}
       <main style={{ flex: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>
         <Routes>
           {/* Public Routes */}
@@ -74,15 +69,19 @@ function AppContent() {
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/stock/:symbol" element={<StockDetails />} />
+            {/* --- START: MODIFIED CODE --- */}
+            {/* The old /mutual-funds path now points to the new page */}
             <Route path="/mutual-funds" element={<MutualFunds />} />
+            {/* A new path for ETFs is added */}
+            <Route path="/etfs" element={<ETFs />} />
+            {/* --- END: MODIFIED CODE --- */}
             <Route path="/transactions" element={<Transactions />} />
           </Route>
 
-          {/* Fallback for unknown routes - redirect to dashboard if logged in, or login */}
+          {/* Fallback for unknown routes */}
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </main>
-      {/* Footer component */}
       <Footer />
     </div>
   );

@@ -44,7 +44,12 @@ function Header() {
         {isAuthenticated ? (
           <>
             <Link to="/dashboard" style={navLinkStyle}>Dashboard</Link>
+            {/* --- START: MODIFIED CODE --- */}
+            {/* Corrected the link to point to /etfs */}
+            <Link to="/etfs" style={navLinkStyle}>ETFs</Link>
+            {/* Added a new link for the Mutual Funds page */}
             <Link to="/mutual-funds" style={navLinkStyle}>Mutual Funds</Link>
+            {/* --- END: MODIFIED CODE --- */}
             <Link to="/transactions" style={navLinkStyle}>Transactions</Link>
             <Link to="/learn" style={navLinkStyle}>Learn</Link>
             <Link to="/leaderboard" style={navLinkStyle}>Leaderboard</Link>
