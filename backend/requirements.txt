@@ -11,3 +11,4 @@ bcrypt==3.2.0
 react-toastify
 react-loading-skeleton
 react-joyride
+websockets
