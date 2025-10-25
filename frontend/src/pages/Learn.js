@@ -1,214 +1,287 @@
+// src/pages/Learn.js
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import BackButton from '../components/BackButton'; // Add BackButton
+import BackButton from '../components/BackButton';
 
-// --- Reusable Accordion Component ---
-function AccordionItem({ title, children }) {
-  const [isOpen, setIsOpen] = useState(false);
+// Reusable Accordion Component (Remains the same)
+function AccordionItem({ title, children, startOpen = false }) { // Added startOpen prop
+    const [isOpen, setIsOpen] = useState(startOpen);
 
-  const headerStyle = {
-    backgroundColor: 'var(--bg-dark-primary)',
-    padding: '1rem 1.5rem',
-    border: '1px solid var(--border-color)',
-    borderRadius: isOpen ? '8px 8px 0 0' : '8px',
-    cursor: 'pointer',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    transition: 'background-color 0.2s ease',
-  };
+    const headerStyle = {
+        backgroundColor: 'var(--bg-dark-primary)',
+        padding: '1rem 1.5rem',
+        border: '1px solid var(--border-color)',
+        borderRadius: isOpen ? '8px 8px 0 0' : '8px',
+        cursor: 'pointer',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        transition: 'background-color 0.2s ease',
+    };
 
-  const contentStyle = {
-    padding: '1.5rem',
-    border: '1px solid var(--border-color)',
-    borderTop: 'none',
-    borderBottomLeftRadius: '8px',
-    borderBottomRightRadius: '8px',
-    backgroundColor: 'var(--bg-dark-secondary)', // Slightly lighter background for content
-  };
+    const contentStyle = {
+        padding: '1.5rem',
+        border: '1px solid var(--border-color)',
+        borderTop: 'none',
+        borderBottomLeftRadius: '8px',
+        borderBottomRightRadius: '8px',
+        backgroundColor: 'var(--bg-dark-secondary)',
+    };
 
-  return (
-    <div style={{ marginBottom: '1rem' }}>
-      <div 
-        style={headerStyle} 
-        onClick={() => setIsOpen(!isOpen)}
-        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-dark-secondary)'}
-        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-dark-primary)'}
-      >
-        <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
-        <span style={{ fontSize: '1.5rem', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}>
-          {isOpen ? '−' : '+'}
-        </span>
-      </div>
-      {isOpen && (
-        <div style={contentStyle}>
-          {children}
+    return (
+        <div style={{ marginBottom: '1rem' }}>
+            <div
+                style={headerStyle}
+                onClick={() => setIsOpen(!isOpen)}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-dark-secondary)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-dark-primary)'}
+            >
+                <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
+                <span style={{ fontSize: '1.5rem', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}>
+                {isOpen ? '−' : '+'}
+                </span>
+            </div>
+            {isOpen && (
+                <div style={contentStyle}>
+                {children}
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 }
 
-
-// --- EXPANDED DATA ---
-const investmentInstruments = [
-  { 
-    name: "Stocks (Equities)", 
-    details: {
-      "What are they?": "Stocks represent partial ownership (equity) in a publicly traded company. When you buy a stock (e.g., Reliance Industries), you own a tiny fraction of that company.",
-      "How do you make money?": "1. **Capital Appreciation:** The stock price goes up over time, and you sell it for more than you paid. 2. **Dividends:** Some companies distribute a portion of their profits to shareholders regularly.",
-      "What are the risks?": "Stock prices can be volatile and go down due to company performance, market sentiment, or economic factors. You could lose some or all of your invested capital.",
-      "How to invest (in this simulator)?": "Go to the Dashboard, enter a stock symbol (like 'AAPL' or 'RELIANCE.NS'), check its price on the details page, and use the 'Buy' form to purchase shares with your simulated balance.",
-    } 
-  },
-  { 
-    name: "ETFs (Exchange Traded Funds)", 
-    details: {
-       "What are they?": "ETFs are like baskets containing many different stocks, bonds, or commodities, all bundled into a single unit that trades on the stock exchange like a regular stock. Many ETFs track an index (e.g., a Nifty 50 ETF holds shares of the top 50 Indian companies).",
-       "How do you make money?": "Primarily through capital appreciation as the value of the underlying assets in the ETF increases. Some ETFs also distribute dividends.",
-       "What are the risks?": "The risk depends on what the ETF holds. A broad market ETF (like Nifty 50) is generally less risky than investing in a single stock due to diversification, but it can still lose value if the overall market declines. Sector-specific ETFs (like an IT ETF) carry higher risk.",
-       "How to invest (in this simulator)?": "Go to the 'Invest in ETFs (Funds)' page, select an ETF from the list (like 'NIFTYBEES.NS'), enter the amount you want to invest, and click 'Invest Now'. The simulator calculates how many units you get based on the current price (NAV)."
-    } 
-  },
-   { 
-    name: "Mutual Funds (MFs)", 
-    details: {
-       "What are they?": "Similar to ETFs, Mutual Funds pool money from many investors to buy a diversified portfolio. However, they typically don't trade live on an exchange. You buy or sell units directly from the fund house (Asset Management Company - AMC) at a price (NAV - Net Asset Value) calculated once per day after the market closes.",
-       "How do they differ from ETFs?": "MFs are usually actively managed (a fund manager picks investments), while most ETFs passively track an index. MFs have NAV calculated daily; ETFs trade live. MFs often have different expense structures.",
-        "How do you make money?": "Capital appreciation (NAV increases) and sometimes dividends.",
-       "What are the risks?": "Similar to ETFs, risk depends on the fund's holdings and strategy. Actively managed funds also carry 'manager risk' – the risk that the fund manager makes poor investment choices.",
-       "How to invest (in this simulator)?": "Our simulator uses ETFs to represent Mutual Funds because we can get live prices. Use the 'Invest in ETFs (Funds)' page."
-    } 
-  },
-  { 
-    name: "Bonds (Debt)", 
-    details: {
-        "What are they?": "Bonds are essentially loans you give to a government (like Government Bonds or G-Secs) or a company (Corporate Bonds). In return, the issuer promises to pay you regular interest (coupon) over a fixed period and return your principal amount at the end (maturity).",
-        "How do you make money?": "Primarily through the regular interest payments. Bond prices can also fluctuate in the market based on interest rate changes, potentially offering capital appreciation if sold before maturity.",
-        "What are the risks?": "1. **Interest Rate Risk:** If interest rates rise after you buy a bond, newly issued bonds will offer higher interest, making your existing bond less attractive (its price might fall). 2. **Credit Risk (Default Risk):** The issuer might fail to make interest payments or repay the principal (more common with corporate bonds than government bonds).",
-        "How to invest (in this simulator)?": "We offer Debt ETFs on the 'Invest in ETFs (Funds)' page (e.g., 'GSEC.NS', 'LIQUIDBEES.NS'). These ETFs hold a basket of bonds, providing diversification."
-    } 
-  },
+// --- START: NEW AND EXPANDED DATA STRUCTURE ---
+const learnContent = [
+    {
+        sectionTitle: "📘 1. Introduction to Investing",
+        topics: [
+            {
+                title: "What is investing?",
+                content: "Investing is the act of allocating resources, usually money, with the expectation of generating an income or profit in the future. Unlike spending, where money is used for immediate consumption, investing aims to grow your money over time.",
+            },
+            {
+                title: "Difference between saving and investing",
+                content: "Saving typically involves putting money aside in a safe place (like a bank account) for short-term goals or emergencies. It prioritizes safety and easy access, but usually offers very low returns. Investing involves taking on some risk with the goal of achieving higher returns over the long term. It's geared towards goals like retirement or building wealth.",
+            },
+            {
+                title: "Why people invest — inflation, wealth creation, goals",
+                content: "People invest for several key reasons: 1. Beat Inflation: Inflation erodes the purchasing power of your money over time. Investing aims to generate returns higher than inflation, preserving and growing your wealth. 2. Wealth Creation: Investing allows your money to work for you through compounding, potentially growing significantly over the long run. 3. Achieve Financial Goals: Investing helps reach major goals like buying a house, funding education, or ensuring a comfortable retirement.",
+            },
+            {
+                title: "Common myths and fears about investing",
+                content: "Myth: You need a lot of money to start. Reality: You can start with small amounts through SIPs or fractional shares. Myth: Investing is like gambling. Reality: While risk exists, informed investing based on research is very different from gambling. Myth: It's too complicated. Reality: Basic concepts are understandable, and tools like ETFs simplify diversification. Fear: Losing money. Reality: Risk is inherent, but diversification and long-term thinking mitigate it.",
+            },
+        ],
+    },
+    {
+        sectionTitle: "💹 2. Understanding Financial Markets",
+        topics: [
+            {
+                title: "What are financial markets?",
+                content: "Financial markets are marketplaces where buyers and sellers trade financial assets like stocks, bonds, currencies, and commodities. They facilitate the flow of capital from those who have it (investors) to those who need it (companies, governments).",
+            },
+            {
+                title: "Types of markets",
+                content: "Stock Market (Equity): Where shares of publicly traded companies are bought and sold. Bond Market (Debt): Where debt securities issued by governments and corporations are traded. Commodity Market: Where raw materials like gold, oil, and agricultural products are traded. Derivatives Market: Where financial contracts deriving their value from underlying assets are traded (e.g., futures, options - more complex). Forex Market: Where currencies are traded.",
+            },
+            {
+                title: "Role of stock exchanges (NSE, BSE, NASDAQ, NYSE, etc.)",
+                content: "Stock exchanges are organized and regulated marketplaces that provide the infrastructure for trading stocks. They ensure fair and orderly trading, set listing requirements for companies, and provide price transparency. Examples include the National Stock Exchange (NSE) and Bombay Stock Exchange (BSE) in India, and the NASDAQ and New York Stock Exchange (NYSE) in the US.",
+            },
+        ],
+    },
+    {
+        sectionTitle: "🧾 3. Investment Instruments",
+        topics: [
+            {
+                title: "Stocks (Equities)",
+                content: "Represent ownership in a company. Offer potential for high growth (capital appreciation) and income (dividends). Risker than bonds as value fluctuates with company performance and market sentiment. (See Section 1 for more details).",
+            },
+            {
+                title: "Mutual Funds (MFs)",
+                content: "Pool money from many investors to buy a diversified portfolio. Actively managed by a fund manager aiming to beat the market (higher fees). NAV calculated once daily. Good for beginners seeking diversification and professional management. SIP (Systematic Investment Plan) is a popular way to invest fixed amounts regularly.",
+            },
+            {
+                title: "ETFs (Exchange-Traded Funds)",
+                content: "Similar to MFs but trade like stocks on an exchange throughout the day. Mostly passively managed, tracking an index (e.g., Nifty 50). Typically have lower fees than active MFs. Offer diversification and flexibility.",
+            },
+            {
+                title: "Bonds",
+                content: "Loans to governments or corporations paying fixed interest. Generally safer than stocks, providing income and stability. Prices move inversely to interest rates. Government bonds (G-Secs) are very safe; corporate bonds carry credit risk.",
+            },
+            {
+                title: "Gold (Commodity)",
+                content: "Often seen as a 'safe haven' asset during economic uncertainty. Can be invested in physically, through Gold ETFs, or Sovereign Gold Bonds (SGBs) which offer interest.",
+            },
+            {
+                title: "REITs (Real Estate Investment Trusts)",
+                content: "Companies that own or finance income-producing real estate. Allow investors to invest in large-scale properties without buying them directly. Trade like stocks and offer income through dividends (from rental income).",
+            },
+        ],
+    },
+     {
+        sectionTitle: "⚙️ 4. How Investing Works",
+        topics: [
+            {
+                title: "How to buy/sell (Demat & Trading Account, Brokers)",
+                content: "To invest in stocks or ETFs, you need: 1. Demat Account: Holds your securities electronically. 2. Trading Account: Used to place buy/sell orders. 3. Broker: An intermediary (like Zerodha, Groww, Upstox in India; Robinhood, Charles Schwab in US) that provides the platform, executes trades, and connects to the exchange. You link your bank account to fund trades.",
+            },
+            {
+                title: "Order types: Market, Limit, Stop-Loss",
+                content: "Market Order: Buy/sell immediately at the best available price (guarantees execution, not price). Limit Order: Buy/sell only at your specified price or better (guarantees price if executed, not execution). Stop-Loss Order: An order to sell a stock if its price falls to a certain level, used to limit potential losses.",
+            },
+            {
+                title: "Role of SEBI (India) and regulations",
+                content: "Market regulators like the Securities and Exchange Board of India (SEBI) oversee the markets to protect investors, prevent fraud, ensure fair practices, and promote market development. They set rules for brokers, exchanges, and listed companies.",
+            },
+            {
+                title: "How stock prices move",
+                content: "Primarily driven by supply and demand, influenced by: Company earnings & future prospects, Economic news (interest rates, GDP growth), Industry trends, Investor sentiment (news, rumors, psychology), and sometimes, unexpected global events.",
+            },
+        ],
+    },
+    {
+        sectionTitle: "🧠 5. Investment Strategies",
+        topics: [
+            {
+                title: "Short-term vs Long-term Investing",
+                content: "Short-term (Trading): Holding investments for days, weeks, or months, trying to profit from price fluctuations. Higher risk, requires more time and skill. Long-term Investing: Holding investments for years or decades, focusing on company growth and compounding. Generally less risky and suitable for wealth building.",
+            },
+            {
+                title: "Diversification & Asset Allocation",
+                content: "Diversification: Spreading investments across different asset classes (stocks, bonds), sectors (IT, Pharma), and geographies to reduce risk. Asset Allocation: Deciding the *proportion* of your portfolio in each asset class based on your goals, risk tolerance, and time horizon.",
+            },
+            {
+                title: "Value vs Growth Investing",
+                content: "Value Investing: Seeking stocks that appear undervalued by the market based on fundamental analysis (e.g., low P/E ratio). Growth Investing: Seeking stocks of companies expected to grow earnings at an above-average rate, even if they seem expensive now.",
+            },
+            {
+                title: "SIP & Rupee Cost Averaging",
+                content: "A Systematic Investment Plan (SIP) involves investing a fixed amount of money at regular intervals (e.g., monthly) into a mutual fund or ETF. This leads to Rupee Cost Averaging: you buy more units when prices are low and fewer units when prices are high, potentially lowering your average cost per unit over time.",
+            },
+            {
+                title: "Power of Compounding (with example)",
+                content: "Compounding is earning returns not just on your initial investment, but also on the accumulated returns from previous periods. It's like a snowball effect. Example: Investing ₹10,000 yearly at 12% return for 30 years results in ~₹24 lakhs, even though you only invested ₹3 lakhs!",
+            },
+        ],
+    },
+        {
+        sectionTitle: "📊 6. Analyzing Stocks (Basics)",
+        topics: [
+            {
+                title: "Fundamental Analysis Overview",
+                content: "Focuses on a company's financial health and intrinsic value. Key aspects include: Revenue & Profit Growth: Is the company consistently making more money? Debt Levels: Does it owe too much? Profit Margins: How efficiently does it operate? Management Quality: Are the leaders competent and ethical?",
+            },
+            {
+                title: "Key Fundamental Ratios",
+                content: "EPS (Earnings Per Share): Company's profit divided by outstanding shares. Higher is generally better. P/E Ratio (Price-to-Earnings): Stock price divided by EPS. Compares valuation relative to earnings (see Section 8). ROE (Return on Equity): Net income divided by shareholder equity. Measures how effectively the company uses shareholder investments to generate profit.",
+            },
+            {
+                title: "Technical Analysis Overview",
+                content: "Focuses on chart patterns and trading statistics to predict future prices. Key concepts: Support & Resistance: Price levels where a stock tends to stop falling (support) or stop rising (resistance). Moving Averages: Smoothed-out price lines to identify trends. Volume: Number of shares traded; high volume can confirm a trend.",
+            },
+        ],
+    },
+    {
+        sectionTitle: "⚖️ 7. Risk Management",
+        topics: [
+            {
+                title: "Understanding Volatility",
+                content: "Volatility measures how much an investment's price fluctuates. High volatility means large, rapid price swings (riskier). Low volatility means steadier prices (less risky). Different assets have different volatility levels (e.g., small-cap stocks vs. government bonds).",
+            },
+            {
+                title: "Don't Invest All in One Stock",
+                content: "Concentrating your investment in a single company is extremely risky. If that company fails, you could lose everything. Diversification across multiple stocks, sectors, and asset classes is crucial.",
+            },
+            {
+                title: "Importance of Emergency Funds",
+                content: "Before investing, ensure you have an emergency fund covering 3-6 months of living expenses in a safe, easily accessible place (like a savings account). This prevents you from being forced to sell investments at a loss during unexpected events (job loss, medical issue).",
+            },
+            {
+                title: "Managing Emotional Decisions (Fear & Greed)",
+                content: "Market fluctuations can trigger fear (selling during dips) or greed (buying excessively during rallies). Successful investing requires discipline to stick to your long-term plan and avoid impulsive decisions driven by emotion.",
+            },
+        ],
+    },
+        {
+        sectionTitle: "💼 8. Building Your First Portfolio",
+        topics: [
+            {
+                title: "How to Start Small",
+                content: "You don't need a large sum. Start with an amount you're comfortable potentially losing. Focus on learning. Consider SIPs in diversified index funds (like Nifty 50 ETFs) as a simple starting point.",
+            },
+            {
+                title: "Example Beginner Portfolio (Illustrative)",
+                content: "This is NOT advice, just an example: 60% Diversified Equity (e.g., Nifty 50 ETF for large caps, Nifty Next 50 ETF for mid-caps), 30% Debt (e.g., Liquid ETF or short-term debt fund for stability), 10% Gold (e.g., Gold ETF or SGB for diversification). Adjust based on your age and risk tolerance.",
+            },
+            {
+                title: "Monitoring and Rebalancing",
+                content: "Monitoring: Regularly review your portfolio's performance (e.g., quarterly), but avoid checking daily prices obsessively. Rebalancing: Over time, some assets grow faster than others, shifting your allocation. Periodically (e.g., yearly) sell some winners and buy more losers to bring your portfolio back to its target asset allocation (e.g., back to 60% stocks / 40% bonds).",
+            },
+        ],
+    },
+    {
+        sectionTitle: "📚 9. Resources & Tools",
+        topics: [
+            {
+                title: "Recommended Books",
+                content: "*The Intelligent Investor* by Benjamin Graham (Value Investing classic), *Rich Dad Poor Dad* by Robert Kiyosaki (Mindset), *The Little Book of Common Sense Investing* by John C. Bogle (Index Funds), *Let's Talk Money* by Monika Halan (Indian context).",
+            },
+            {
+                title: "Free Learning Platforms",
+                content: "Zerodha Varsity: Excellent, comprehensive modules on Indian markets. NSE India & BSE India websites: Official exchange resources. Investopedia: Vast online financial dictionary and tutorials. Coursera/edX: Offer finance courses from universities.",
+            },
+            {
+                title: "Useful Apps/Websites",
+                content: "Yahoo Finance / Google Finance: General market news and stock data. TradingView: Advanced charting tools. Screener.in / Tickertape: Fundamental analysis tools for Indian stocks. Broker Apps: Your broker's app (Zerodha Kite, Groww, etc.) for trading and portfolio tracking.",
+            },
+        ],
+    },
+    {
+        sectionTitle: "🌱 10. Conclusion & BenStocks",
+        topics: [
+            {
+                title: "Key Takeaways",
+                content: "Investing is a marathon, not a sprint. Patience: Allow time for compounding to work. Discipline: Stick to your plan, invest regularly, and control emotions. Long-Term Thinking: Focus on your goals, not short-term market noise. Continuous Learning: The financial world evolves; keep learning.",
+            },
+            {
+                title: "How BenStocks Helps",
+                content: "BenStocks provides a safe, simulated environment to: Practice: Apply what you learn without risking real money. Experiment: Try different strategies and see how they perform. Track: Monitor your (simulated) portfolio and learn from your decisions. Build Confidence: Gain familiarity with market dynamics before investing real capital.",
+            },
+        ],
+    },
 ];
-
-// --- NEW SECTION: General Terms ---
-const generalTerms = [
-    {
-        name: "Portfolio",
-        details: {
-            "Definition": "Your entire collection of investments. This includes all the stocks, ETFs, bonds, and cash you hold within your account.",
-            "Why it matters": "A well-diversified portfolio (spread across different types of assets and sectors) can help reduce overall risk."
-        }
-    },
-    {
-        name: "Diversification",
-        details: {
-            "Definition": "The strategy of spreading your investments across various asset classes (stocks, bonds), sectors (IT, Pharma, Banking), and geographical regions to reduce risk. Don't put all your eggs in one basket!",
-            "Why it matters": "If one investment performs poorly, others in a diversified portfolio might perform well, cushioning the overall impact."
-        }
-    },
-     {
-        name: "Risk",
-        details: {
-            "Definition": "The possibility that an investment's actual return will be different than expected, including the possibility of losing some or all of the original investment.",
-            "Types": "Market risk (overall market decline), interest rate risk (for bonds), credit risk (issuer default), inflation risk (returns don't beat inflation), liquidity risk (can't sell easily)."
-        }
-    },
-     {
-        name: "Return",
-        details: {
-            "Definition": "The profit or loss made on an investment over a period, usually expressed as a percentage of the original investment.",
-            "Components": "Can include capital appreciation (price increase) and income (dividends or interest)."
-        }
-    },
-     {
-        name: "Volatility",
-        details: {
-            "Definition": "A measure of how much the price of an investment fluctuates over time. Higher volatility means larger price swings (up and down), generally indicating higher risk.",
-             "Example": "Technology stocks are often more volatile than utility stocks."
-        }
-    },
-     {
-        name: "Bull Market vs. Bear Market",
-        details: {
-            "Bull Market": "A period when market prices are generally rising, accompanied by investor optimism.",
-            "Bear Market": "A period when market prices are generally falling (typically a decline of 20% or more from recent highs), accompanied by investor pessimism."
-        }
-    },
-     {
-        name: "NAV (Net Asset Value)",
-        details: {
-            "Definition": "Used primarily for Mutual Funds and ETFs. It represents the price per share/unit of the fund, calculated by taking the fund's total assets minus its liabilities, divided by the number of outstanding shares/units.",
-             "Calculation": "For MFs, calculated once daily after market close. For ETFs, the market price fluctuates live, but an indicative NAV (iNAV) is often calculated throughout the day."
-        }
-    },
-     {
-        name: "CAGR (Compound Annual Growth Rate)",
-        details: {
-            "Definition": "The average annual rate of return an investment provides over a specified period longer than one year, assuming profits are reinvested.",
-            "Use": "It provides a smoothed-out measure of an investment's performance over time, better than simple average returns.",
-             "Formula (Simplified)": "`((Ending Value / Beginning Value)^(1 / Number of Years)) - 1`"
-        }
-    },
-    {
-        name: "Broker",
-        details: {
-            "Definition": "An individual or firm that acts as an intermediary between an investor and a securities exchange. You need a broker (like Zerodha, Groww, Upstox in India, or Robinhood, Charles Schwab in the US) to buy and sell stocks, ETFs, etc.",
-            "Role": "They execute your buy/sell orders, hold your securities and cash (in a demat/trading account), and provide trading platforms and research."
-        }
-    },
-     {
-        name: "Demat & Trading Account",
-        details: {
-            "Demat Account": "Holds your shares and securities in electronic (dematerialized) form.",
-            "Trading Account": "Used to place buy and sell orders in the stock market. Linked to your Demat account and bank account."
-        }
-    },
-];
-
+// --- END: NEW AND EXPANDED DATA STRUCTURE ---
 
 function Learn() {
   const navigate = useNavigate();
 
-  // No longer needed if we remove the proceed button
-  // const handleProceed = () => { navigate("/dashboard"); };
-
   return (
     <div className="container">
-      <BackButton /> {/* Add Back Button */}
+      <BackButton />
       <div className="page-header">
         <h1>Learn About Investing</h1>
-        <p>Understand the basics of different investment types and common financial terms.</p>
+        <p>Your comprehensive guide to understanding financial markets, instruments, and strategies.</p>
       </div>
 
-      <h2>Investment Instruments</h2>
-      {investmentInstruments.map((inst, index) => (
-        <AccordionItem key={`inst-${index}`} title={inst.name}>
-          {Object.entries(inst.details).map(([key, value]) => (
-            <div key={key} style={{ marginBottom: '1rem' }}>
-              <h4 style={{ color: 'var(--brand-primary)', marginBottom: '0.3rem' }}>{key}</h4>
-              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{value}</p>
-            </div>
+      {/* --- START: MODIFIED RENDERING LOGIC --- */}
+      {/* Loop through sections */}
+      {learnContent.map((section, sectionIndex) => (
+        <React.Fragment key={sectionIndex}>
+          <h2 style={{ marginTop: sectionIndex === 0 ? '0' : '3rem' }}>{section.sectionTitle}</h2>
+          {/* Loop through topics within each section */}
+          {section.topics.map((topic, topicIndex) => (
+            <AccordionItem key={`${sectionIndex}-${topicIndex}`} title={topic.title} startOpen={sectionIndex === 0 && topicIndex === 0}>
+              {/* Render content paragraphs */}
+              {topic.content.split('\n').map((paragraph, pIndex) => (
+                   <p key={pIndex} style={{ color: 'var(--text-secondary)', margin: '0 0 1rem 0' }}>{paragraph}</p>
+              ))}
+            </AccordionItem>
           ))}
-        </AccordionItem>
+        </React.Fragment>
       ))}
-
-      <h2 style={{marginTop: '3rem'}}>General Investing Terms</h2>
-       {generalTerms.map((term, index) => (
-        <AccordionItem key={`term-${index}`} title={term.name}>
-           {Object.entries(term.details).map(([key, value]) => (
-            <div key={key} style={{ marginBottom: '1rem' }}>
-              <h4 style={{ color: 'var(--brand-primary)', marginBottom: '0.3rem' }}>{key}</h4>
-              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>{value}</p>
-            </div>
-          ))}
-        </AccordionItem>
-      ))}
-      
-      {/* Optional: Remove proceed button if navigation is clear */}
-      {/* <button onClick={handleProceed} style={{ marginTop: "2rem" }}>
-        Go to Dashboard
-      </button> */}
+      {/* --- END: MODIFIED RENDERING LOGIC --- */}
     </div>
   );
 }
