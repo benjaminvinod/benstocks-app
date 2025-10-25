@@ -13,3 +13,6 @@ react-loading-skeleton
 react-joyride
 websockets
 requests
+newsdataapi
+transformers
+torch

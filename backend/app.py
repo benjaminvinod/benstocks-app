@@ -2,10 +2,7 @@
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-# --- START: MODIFIED CODE ---
-# The 'mutual_funds' import is removed
-from routes import auth, portfolio, stocks, info, leaderboard, admin
-# --- END: MODIFIED CODE ---
+from routes import auth, portfolio, stocks, info, leaderboard, admin, news
 from websocket_manager import manager, price_updater_task
 
 app = FastAPI(
@@ -16,8 +13,10 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
+    """On startup, create the background task for price updates."""
     asyncio.create_task(price_updater_task())
 
+# CORS middleware remains the same
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,21 +25,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include all the existing, working routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["Portfolio"])
 app.include_router(stocks.router, prefix="/stocks", tags=["Stocks"])
 app.include_router(info.router, prefix="/info", tags=["Info"])
 app.include_router(leaderboard.router, prefix="/leaderboard", tags=["Leaderboard"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(news.router, prefix="/news", tags=["News"])
+
 # --- START: MODIFIED CODE ---
-# The mutual_funds router is removed from here
+# The line below, which was causing the error, has now been deleted.
+# app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
 # --- END: MODIFIED CODE ---
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
+            # Keep the connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
