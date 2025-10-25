@@ -150,7 +150,7 @@ const learnContent = [
             },
             {
                 title: "Diversification & Asset Allocation",
-                content: "Diversification: Spreading investments across different asset classes (stocks, bonds), sectors (IT, Pharma), and geographies to reduce risk. Asset Allocation: Deciding the *proportion* of your portfolio in each asset class based on your goals, risk tolerance, and time horizon.",
+                content: "Diversification: Spreading investments across different asset classes (stocks, bonds), sectors (IT, Pharma), and geographies to reduce risk. Asset Allocation: Deciding the proportion of your portfolio in each asset class based on your goals, risk tolerance, and time horizon.",
             },
             {
                 title: "Value vs Growth Investing",
@@ -226,7 +226,7 @@ const learnContent = [
         topics: [
             {
                 title: "Recommended Books",
-                content: "*The Intelligent Investor* by Benjamin Graham (Value Investing classic), *Rich Dad Poor Dad* by Robert Kiyosaki (Mindset), *The Little Book of Common Sense Investing* by John C. Bogle (Index Funds), *Let's Talk Money* by Monika Halan (Indian context).",
+                content: "The Intelligent Investor by Benjamin Graham (Value Investing classic), Rich Dad Poor Dad by Robert Kiyosaki (Mindset), The Little Book of Common Sense Investing by John C. Bogle (Index Funds), Let's Talk Money by Monika Halan (Indian context).",
             },
             {
                 title: "Free Learning Platforms",

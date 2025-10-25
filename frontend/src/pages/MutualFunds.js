@@ -3,9 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { buyInvestment } from '../api/portfolio';
 import { getStockPrice } from '../api/stocks'; 
 import { formatCurrency } from '../utils/format';
-import BackButton from '../components/BackButton'; // Import the new BackButton
+import BackButton from '../components/BackButton';
+import { toast } from 'react-toastify';
+import { DIVIDEND_ETFS } from '../utils/dividendAssets';
 
-// 1. A much larger list of real, popular Indian ETFs
 const popularETFs = [
   // --- Index Funds ---
   { symbol: "NIFTYBEES.NS", name: "Nippon India ETF Nifty 50 BeES", description: "Tracks the Nifty 50 Index.", risk: "Medium" },
@@ -38,83 +39,71 @@ const popularETFs = [
 
 
 function MutualFunds() {
-  const { user, refreshUser } = useAuth(); // Get refreshUser
+  const { user, refreshUser } = useAuth();
   
   const [selectedFund, setSelectedFund] = useState(popularETFs[0].symbol);
-  const [amount, setAmount] = useState(5000); // Invest by amount
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [amount, setAmount] = useState(5000);
   const [loading, setLoading] = useState(false);
 
   const handleBuy = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setLoading(true);
 
     if (amount <= 0) {
-      setError("Please enter a valid amount to invest.");
+      toast.error("Please enter a valid amount to invest.");
       setLoading(false);
       return;
     }
     
     if(!user || amount > user.balance) {
-      setError("Insufficient balance for this investment.");
+      toast.error("Insufficient balance for this investment.");
       setLoading(false);
       return;
     }
 
     try {
-      // 1. Get the LIVE price (NAV)
       const fundData = await getStockPrice(selectedFund);
       const currentNav = fundData.close;
       
       if (!currentNav || currentNav <= 0) {
-        setError("Could not fetch fund price. Please try again.");
+        toast.error("Could not fetch fund price. Please try again.");
         setLoading(false);
         return;
       }
 
-      // 2. Calculate units
       const quantity = amount / currentNav; 
 
       const investment = {
         symbol: selectedFund,
-        quantity: Number(quantity.toFixed(4)), // Store units
-        buy_price: currentNav, // Store NAV as buy price
+        quantity: Number(quantity.toFixed(4)),
+        buy_price: currentNav,
         buy_date: new Date().toISOString()
       };
 
-      // 3. Call the existing buyInvestment API
       await buyInvestment(user.id, investment);
       
-      // 4. Refresh the user's balance!
       await refreshUser();
       
-      setSuccess(`Successfully invested ${formatCurrency(amount, "INR")} in ${selectedFund}!`);
-      setAmount(5000); // Reset form
+      toast.success(`Successfully invested ${formatCurrency(amount, "INR")} in ${selectedFund}!`);
+      setAmount(5000);
       
     } catch (err) {
       const errorMsg = err.detail || err.message || 'Failed to make investment.';
-      setError(errorMsg);
+      toast.error(errorMsg);
     }
     setLoading(false);
   };
 
   return (
     <div className="container">
-      <BackButton /> {/* --- ADDED BACK BUTTON --- */}
+      <BackButton />
       <div className="page-header">
         <h1>Invest in ETFs (Funds)</h1>
         <p>Invest a lump sum amount into a real Exchange Traded Fund. Prices are live.</p>
       </div>
 
-      {/* --- Buy Form --- */}
       <form onSubmit={handleBuy} style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
         <h3>New Investment</h3>
-        
-        {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
-        {success && <p style={{ color: 'var(--brand-primary)' }}>{success}</p>}
 
         <div className="form-group">
           <label htmlFor="fund">Choose an ETF</label>
@@ -147,12 +136,14 @@ function MutualFunds() {
         </button>
       </form>
 
-      {/* --- Fund List --- */}
       <h2>Available ETFs</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
         {popularETFs.map(fund => (
           <div key={fund.symbol} style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-            <h3 style={{ color: 'var(--brand-primary)', margin: 0 }}>{fund.name}</h3>
+            <h3 style={{ color: 'var(--brand-primary)', margin: 0 }}>
+              {fund.name}
+              {DIVIDEND_ETFS.includes(fund.symbol) && <span title="Distributes dividends/interest"> 💵</span>}
+            </h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{fund.description}</p>
             <p><span style={{ color: 'var(--text-primary)' }}>Risk:</span> {fund.risk}</p>
           </div>

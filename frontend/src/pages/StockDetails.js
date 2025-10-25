@@ -1,16 +1,15 @@
-// src/pages/StockDetails.js
-
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { getStockPrice } from "../api/stocks";
 import { buyInvestment, getWatchlist, addToWatchlist, removeFromWatchlist } from "../api/portfolio";
 import { useAuth } from "../context/AuthContext";
-import { formatCurrency, formatLargeNumber } from "../utils/format"; // Import formatLargeNumber
+import { formatCurrency, formatLargeNumber } from "../utils/format";
 import BackButton from '../components/BackButton';
 import StockChart from "../components/StockChart";
 import { toast } from 'react-toastify';
+import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 
-// This is a new helper component for displaying stats
+// This is a helper component for displaying stats
 const Stat = ({ label, value }) => (
     <div style={{ flex: '1 1 150px', background: 'var(--bg-dark-primary)', padding: '1rem', borderRadius: '8px' }}>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{label}</p>
@@ -35,6 +34,8 @@ function StockDetails() {
   const [watchlist, setWatchlist] = useState([]);
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
+
+  const isDividendStock = DIVIDEND_STOCKS.includes(symbol.toUpperCase());
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -132,6 +133,11 @@ function StockDetails() {
               <p style={{ fontSize: '2rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
                 {formatCurrency(stockData.close, currencyCode)}
               </p>
+              {isDividendStock && (
+                <p style={{ margin: 0, color: 'var(--brand-primary)', fontWeight: 'bold' }}>
+                    💵 This stock is known to pay dividends.
+                </p>
+              )}
             </div>
             <button 
                 onClick={handleWatchlistToggle} 
@@ -152,8 +158,6 @@ function StockDetails() {
             <p><span style={{color: 'var(--text-secondary)'}}>Low:</span> {formatCurrency(stockData.low, currencyCode)}</p>
           </div>
           
-          {/* --- START: ADDED CODE --- */}
-          {/* This is the new section for key metrics */}
           <h2>Key Metrics</h2>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
               <Stat label="Market Cap" value={formatLargeNumber(stockData.market_cap)} />
@@ -162,7 +166,6 @@ function StockDetails() {
               <Stat label="52-Week High" value={formatCurrency(stockData.week_52_high, currencyCode)} />
               <Stat label="52-Week Low" value={formatCurrency(stockData.week_52_low, currencyCode)} />
           </div>
-          {/* --- END: ADDED CODE --- */}
 
           <StockChart symbol={symbol} />
 

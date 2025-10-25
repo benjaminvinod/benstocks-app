@@ -1,12 +1,13 @@
+// src/components/StockChart.js
+
 import React, { useState, useEffect } from 'react';
 import { getStockHistory } from '../api/stocks';
 import { Line } from 'react-chartjs-2';
-import { parseISO, isValid as isValidDate } from 'date-fns'; // Import isValid
+import { parseISO, isValid as isValidDate } from 'date-fns';
 
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, Filler } from 'chart.js';
 import 'chartjs-adapter-date-fns'; 
 
-// Register Filler for background color
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, Filler); 
 
 function StockChart({ symbol }) {
@@ -16,10 +17,10 @@ function StockChart({ symbol }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    let isMounted = true; // Prevent state updates if component unmounts
+    let isMounted = true; 
 
     const fetchHistory = async () => {
-      if (!isMounted) return; // Exit if component unmounted
+      if (!isMounted) return; 
       setLoading(true);
       setError('');
       setChartData(null); 
@@ -27,33 +28,30 @@ function StockChart({ symbol }) {
       try {
         const history = await getStockHistory(symbol, period);
         
-        if (!isMounted) return; // Exit if component unmounted after fetch
+        if (!isMounted) return; 
 
         if (!history || !Array.isArray(history) || history.length === 0) {
           throw new Error(`No historical data found for ${symbol} for period ${period}.`);
         }
         
-        // --- Data Processing with Validation ---
         const dataPoints = history
           .map(data => {
-            const date = parseISO(data.Date); // Parse ISO string (now expects UTC 'Z')
+            const date = parseISO(data.Date); 
             const price = data.Close !== null ? Number(data.Close) : null;
-            // Validate both date and price
             if (!isValidDate(date) || price === null || isNaN(price)) {
               console.warn("Skipping invalid data point:", data);
-              return null; // Skip invalid points
+              return null; 
             }
             return { x: date, y: price };
           })
-          .filter(point => point !== null) // Remove skipped points
-          // Optional: Sort points just in case API returns unsorted data
+          .filter(point => point !== null) 
           .sort((a, b) => a.x - b.x); 
 
          if (dataPoints.length === 0) {
            throw new Error("Valid chart data could not be processed.");
          }
         
-        if (isMounted) { // Check again before setting state
+        if (isMounted) { 
           setChartData({
             datasets: [{
                 label: `${symbol} Price`,
@@ -80,16 +78,76 @@ function StockChart({ symbol }) {
 
     fetchHistory();
 
-    // Cleanup function
     return () => {
       isMounted = false; 
     };
 
-  }, [symbol, period]); // Refetch when symbol or period changes
+  }, [symbol, period]); 
 
-  const chartOptions = { /* ... (options remain the same as previous step, ensure TimeScale is configured) ... */ };
+  // --- START: MODIFIED CODE ---
+  // The old placeholder comment is replaced with this complete options object.
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        type: 'time', // Crucially, tell the chart the X-axis is for time
+        time: {
+          unit: 'month', // Display months on the axis
+          tooltipFormat: 'MMM dd, yyyy', // Format for hover tooltip
+        },
+        ticks: {
+          color: 'var(--text-secondary)',
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 7,
+        },
+        grid: {
+          color: 'rgba(74, 85, 104, 0.4)', // Faint grid lines
+        }
+      },
+      y: {
+        ticks: {
+          color: 'var(--text-secondary)',
+          // Add currency formatting to the Y-axis labels
+          callback: function(value, index, values) {
+            return '$' + value.toLocaleString();
+          }
+        },
+        grid: {
+          color: 'rgba(74, 85, 104, 0.4)',
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: false, // Hide the legend label at the top
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        callbacks: {
+            label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                    label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                }
+                return label;
+            }
+        }
+      }
+    },
+    interaction: {
+        mode: 'index',
+        intersect: false,
+    },
+  };
+  // --- END: MODIFIED CODE ---
   
-  const periodButtons = ['1mo', '3mo', '6mo', '1y', '5y', 'max']; // Added 3mo
+  const periodButtons = ['1mo', '3mo', '6mo', '1y', '5y', 'max'];
 
   return (
     <div style={{ marginTop: '2rem', height: '400px' }}>
@@ -101,10 +159,9 @@ function StockChart({ symbol }) {
              style={{
                padding: '0.5rem 1rem',
                fontSize: '0.8rem',
-               // Highlight active button
                backgroundColor: period === p ? 'var(--brand-primary)' : 'var(--bg-dark-primary)', 
                border: '1px solid var(--border-color)',
-               color: period === p ? 'white' : 'var(--text-secondary)', // Change text color too
+               color: period === p ? 'white' : 'var(--text-secondary)',
                cursor: 'pointer'
              }}
            >
@@ -113,10 +170,9 @@ function StockChart({ symbol }) {
         ))}
       </div>
 
-      <div style={{ position: 'relative', height: 'calc(100% - 40px)' }}> {/* Adjust height */}
+      <div style={{ position: 'relative', height: 'calc(100% - 40px)' }}>
         {loading && <p>Loading chart for {period}...</p>}
         {error && <p style={{ color: 'var(--danger)' }}>Error: {error}</p>}
-        {/* Only render chart if data exists and not loading/error */}
         {chartData && !loading && !error && (
             <Line options={chartOptions} data={chartData} />
         )}

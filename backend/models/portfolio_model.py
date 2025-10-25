@@ -1,10 +1,9 @@
-# models/portfolio.py
+# models/portfolio_model.py
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Literal # Import Literal
 from datetime import datetime
 import uuid 
-# --- ADD THIS IMPORT ---
-from bson import ObjectId # Import ObjectId
+from bson import ObjectId
 
 class Investment(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -20,16 +19,19 @@ class PortfolioDB(BaseModel):
     investments: List[Investment] = []
     
     model_config = ConfigDict(
-        populate_by_name=True, # Allow mapping _id to id
-        arbitrary_types_allowed=True, # Allow ObjectId if needed elsewhere
-        json_encoders={ObjectId: str} # Ensure ObjectId is serialized correctly
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
     )
 
 class Transaction(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
     symbol: str
-    type: str # "BUY" or "SELL"
+    # --- START: MODIFIED CODE ---
+    # We now strictly define the allowed transaction types.
+    type: Literal["BUY", "SELL", "DIVIDEND"] 
+    # --- END: MODIFIED CODE ---
     quantity: float
     price_per_unit: float # Original price (e.g., USD)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -41,7 +43,6 @@ class SellRequest(BaseModel):
     quantity_to_sell: float
 
 # Custom type for handling MongoDB ObjectId in Pydantic V2
-# This helps if you directly use ObjectId fields in your models
 class PyObjectId(ObjectId):
     @classmethod
     def __get_validators__(cls):
@@ -49,7 +50,6 @@ class PyObjectId(ObjectId):
 
     @classmethod
     def validate(cls, v, values):
-        # Allow Pydantic V2 to handle potential dicts or existing ObjectIds
         if isinstance(v, ObjectId):
             return v
         if ObjectId.is_valid(v):
@@ -68,4 +68,3 @@ class PyObjectId(ObjectId):
              ]),
              serialization=cs.plain_serializer_function_ser_schema(lambda x: str(x)),
         )
-
