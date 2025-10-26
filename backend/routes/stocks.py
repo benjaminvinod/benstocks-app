@@ -1,11 +1,63 @@
-import pandas as pd 
+import pandas as pd
 import yfinance as yf
+import requests # Make sure requests is imported
 
 from fastapi import APIRouter, HTTPException, Query
 from utils.fetch_data import fetch_stock_data
 from utils.calculate import calculate_future_value
 
 router = APIRouter()
+
+# --- START: ADDED/RESTORED CODE ---
+@router.get("/search")
+async def search_symbols(query: str = Query(..., min_length=1, description="Search query for stock symbols")):
+    """
+    Searches for stock symbols matching the query using Yahoo Finance's API.
+    """
+    if not query:
+        return []
+
+    # Using the unofficial Yahoo Finance search endpoint
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
+    # Yahoo often requires a User-Agent header to mimic a browser
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        data = response.json()
+
+        # Extract the relevant data ("quotes") from the response structure
+        results = data.get("quotes", [])
+
+        # Format the results into a clean list suitable for the frontend
+        suggestions = []
+        for result in results:
+            # We only want results that have both a symbol and a name,
+            # and preferably are actual stocks (EQUITY).
+            symbol = result.get("symbol")
+            name = result.get("longname") or result.get("shortname") # Use longname if available
+            quote_type = result.get("quoteType")
+
+            if symbol and name and quote_type == "EQUITY":
+                suggestions.append({
+                    "symbol": symbol,
+                    "name": name
+                })
+
+        # Limit the number of suggestions to avoid overwhelming the user
+        return suggestions[:7] # Return the top 7 equity results
+
+    except requests.RequestException as e:
+        # Handle errors during the API request itself
+        print(f"Error fetching from Yahoo search API: {e}")
+        raise HTTPException(status_code=503, detail="Failed to connect to financial data provider for search.")
+    except Exception as e:
+        # Handle any other unexpected errors during processing
+        print(f"Error processing search results: {e}")
+        raise HTTPException(status_code=500, detail="Error processing search results.")
+# --- END: ADDED/RESTORED CODE ---
+
 
 @router.get("/price")
 async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
@@ -14,12 +66,10 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
     """
     try:
         data = fetch_stock_data(symbol)
-        
-        # Check if the fetch_data function returned an error
+
         if data.get("error"):
             raise HTTPException(status_code=404, detail=data["error"])
 
-        # This mapping now includes all the new fields from our updated fetch_data function
         stock_data = {
             "symbol": data.get("symbol"),
             "name": data.get("name"),
@@ -28,8 +78,6 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
             "low": data.get("low"),
             "close": data.get("close"),
             "currency": data.get("currency"),
-
-            # --- NEW FIELDS ---
             "market_cap": data.get("market_cap"),
             "pe_ratio": data.get("pe_ratio"),
             "dividend_yield": data.get("dividend_yield"),
@@ -37,25 +85,17 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
             "week_52_low": data.get("week_52_low"),
         }
 
-        # Check if any crucial values are missing after mapping
-        if not all([
-            stock_data["open"], 
-            stock_data["high"], 
-            stock_data["low"], 
-            stock_data["close"]
-        ]):
+        if not all([stock_data["open"], stock_data["high"], stock_data["low"], stock_data["close"]]):
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail="Incomplete data from financial API. Please try again."
             )
-            
+
         return stock_data
 
     except HTTPException as http_e:
-        # Re-raise HTTPException (like 404s) directly
         raise http_e
     except Exception as e:
-        # Catch any other unexpected server errors
         print(f"Error in get_stock_price: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected server error occurred: {e}")
 
@@ -88,16 +128,14 @@ async def get_stock_history(symbol: str, period: str = "1y"):
     valid_periods = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
     if period not in valid_periods:
         raise HTTPException(status_code=400, detail="Invalid period specified.")
-        
-    print(f"Attempting to fetch history for {symbol} ({period})") # Add logging
+
+    print(f"Attempting to fetch history for {symbol} ({period})")
     try:
         ticker = yf.Ticker(symbol)
-        # Increase timeout slightly, sometimes yfinance can be slow
-        hist = ticker.history(period=period, timeout=20) 
-        
+        hist = ticker.history(period=period, timeout=20)
+
         if hist.empty:
             print(f"Initial history fetch empty for {symbol}. Trying with .NS suffix.")
-            # Try adding .NS suffix automatically if it might be an Indian stock
             if not symbol.upper().endswith((".NS", ".BO")):
                  ticker_ns = yf.Ticker(f"{symbol}.NS")
                  hist = ticker_ns.history(period=period, timeout=20)
@@ -108,38 +146,29 @@ async def get_stock_history(symbol: str, period: str = "1y"):
                  print(f"History fetch empty for {symbol} (already had suffix).")
                  raise HTTPException(status_code=404, detail=f"No historical data found for {symbol} for period {period}.")
 
-        # --- Data Cleaning and Formatting ---
         hist.reset_index(inplace=True)
-        
-        # Ensure 'Date' column exists and is datetime type before formatting
+
         if 'Date' not in hist.columns:
              raise HTTPException(status_code=500, detail="Historical data missing 'Date' column.")
-        # Convert to timezone-naive UTC for consistency before ISO formatting
         try:
-            hist['Date'] = pd.to_datetime(hist['Date']).dt.tz_localize(None) # Make timezone naive
-            hist['Date'] = hist['Date'].apply(lambda x: x.isoformat() + "Z") # Add Z for UTC
+            hist['Date'] = pd.to_datetime(hist['Date']).dt.tz_localize(None)
+            hist['Date'] = hist['Date'].apply(lambda x: x.isoformat() + "Z")
         except Exception as date_err:
              print(f"Error converting Date column: {date_err}")
              raise HTTPException(status_code=500, detail="Error processing date format in historical data.")
 
-        # Ensure 'Close' column exists
         if 'Close' not in hist.columns:
              raise HTTPException(status_code=500, detail="Historical data missing 'Close' column.")
 
-        # Select only necessary columns and handle missing values
         hist_filtered = hist[['Date', 'Close']].copy()
-        hist_filtered.dropna(subset=['Close'], inplace=True) # Drop rows where Close is NaN/None
-
-        # Convert remaining data to records
+        hist_filtered.dropna(subset=['Close'], inplace=True)
         records = hist_filtered.to_dict("records")
         print(f"Successfully fetched {len(records)} history records for {symbol} ({period})")
         return records
-        
+
     except HTTPException as http_exc:
-        # Log and re-raise specific HTTP errors
         print(f"HTTP Exception fetching history for {symbol}: {http_exc.detail}")
-        raise http_exc 
+        raise http_exc
     except Exception as e:
-        # Log unexpected errors
         print(f"Unexpected error fetching history for {symbol} ({period}): {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve historical data: An unexpected error occurred.")

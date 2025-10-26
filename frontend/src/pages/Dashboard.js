@@ -1,7 +1,8 @@
 // src/pages/Dashboard.js
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getPortfolio, getPortfolioLiveValue, getTransactions, getStockPrice } from '../api/portfolio';
+import { getPortfolio, getPortfolioLiveValue, getTransactions } from '../api/portfolio';
+import { searchStocks } from '../api/stocksApi';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import StockCard from '../components/StockCard';
@@ -9,7 +10,7 @@ import { formatCurrency } from '../utils/format';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import Badges from '../components/Badges';
-import NewsTicker from '../components/NewsTicker'; // Import the NewsTicker
+import NewsTicker from '../components/NewsTicker';
 
 import Skeleton, { SkeletonTheme } from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
@@ -21,18 +22,18 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 // Accordion Components
 const AccordionHeader = ({ id, title, isOpen, onClick }) => (
     <div
-        id={id} // Added id prop for Joyride
+        id={id}
         onClick={onClick}
         style={{
-        backgroundColor: 'var(--bg-dark-primary)',
-        padding: '1rem 1.5rem',
-        border: '1px solid var(--border-color)',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginTop: '2rem'
+            backgroundColor: 'var(--bg-dark-primary)',
+            padding: '1rem 1.5rem',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '2rem'
         }}
     >
         <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
@@ -58,28 +59,26 @@ const AccordionContent = ({ isOpen, children }) => (
 // Skeleton Loader Component
 const DashboardSkeleton = () => (
     <SkeletonTheme baseColor="#2d3748" highlightColor="#4a5568">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1><Skeleton width={200} /></h1>
-          <p><Skeleton width={250} /></p>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <p><Skeleton width={180} /></p>
-          <p><Skeleton width={220} /></p>
-        </div>
-      </div>
-      {/* Simulate News Ticker loading */}
-      <Skeleton height={150} style={{ marginBottom: '2rem' }}/>
-      {/* Simulate Badges loading */}
-      <Skeleton height={60} style={{ marginBottom: '2rem' }}/>
-      <div>
-        <Skeleton height={40} style={{ marginBottom: '1rem' }}/>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-          <Skeleton height={200} />
-          <Skeleton height={200} />
-          <Skeleton height={200} />
-        </div>
-      </div>
+       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+         <div>
+           <h1><Skeleton width={200} /></h1>
+           <p><Skeleton width={250} /></p>
+         </div>
+         <div style={{ textAlign: 'right' }}>
+           <p><Skeleton width={180} /></p>
+           <p><Skeleton width={220} /></p>
+         </div>
+       </div>
+       <Skeleton height={150} style={{ marginBottom: '2rem' }}/>
+       <Skeleton height={60} style={{ marginBottom: '2rem' }}/>
+       <div>
+         <Skeleton height={40} style={{ marginBottom: '1rem' }}/>
+         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+           <Skeleton height={200} />
+           <Skeleton height={200} />
+           <Skeleton height={200} />
+         </div>
+       </div>
     </SkeletonTheme>
   );
 
@@ -105,124 +104,135 @@ function Dashboard() {
     const [symbol, setSymbol] = useState('');
     const [searchError, setSearchError] = useState('');
     const [isSearching, setIsSearching] = useState(false);
+    const [suggestions, setSuggestions] = useState([]);
+    const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
 
     // Accordion State
-    const [isAllocationOpen, setIsAllocationOpen] = useState(false); // Default closed
-    const [isCheckerOpen, setIsCheckerOpen] = useState(false);
-    const [isHoldingsOpen, setIsHoldingsOpen] = useState(true); // Default open
+    const [isAllocationOpen, setIsAllocationOpen] = useState(false);
+    const [isCheckerOpen, setIsCheckerOpen] = useState(true);
+    const [isHoldingsOpen, setIsHoldingsOpen] = useState(true);
 
     // Tour State
     const [runTour, setRunTour] = useState(false);
-
     const tourSteps = [
-        { target: '#cash-balance', content: 'Your available cash.', placement: 'bottom' },
-        { target: '#news-ticker', content: 'Latest financial news with sentiment.', placement: 'bottom' },
-        { target: '#stock-checker-form', content: 'Search for stocks here.', placement: 'bottom' },
-        { target: '#holdings-section', content: 'Your purchased investments appear here.', placement: 'top' },
+        {
+            target: '#cash-balance',
+            content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!',
+        },
+        {
+            target: '#stock-checker-form',
+            content: 'Search for any stock here to see its details and historical performance.',
+        },
+        {
+            target: '#holdings-section',
+            content: 'Your purchased investments will appear in this section.',
+        },
+        {
+            target: '#news-ticker',
+            content: 'Check out the latest financial news to help inform your investment decisions.',
+        },
     ];
 
-    // Run tour on first visit
     useEffect(() => {
-        const isFirstVisit = !localStorage.getItem('hasVisitedBenStocks');
-        if (isFirstVisit && !isInitialLoading) { // Only start tour after initial load
-          setTimeout(() => setRunTour(true), 500);
-          localStorage.setItem('hasVisitedBenStocks', 'true');
+        const hasTakenTour = localStorage.getItem('benstocks_tour_complete');
+        if (!hasTakenTour && !isInitialLoading) {
+            setRunTour(true);
         }
-    }, [isInitialLoading]); // Depend on initial loading state
+    }, [isInitialLoading]);
 
     const handleJoyrideCallback = (data) => {
         const { status } = data;
-        if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-          setRunTour(false);
+        const finishedStatuses = [STATUS.FINISHED, STATUS.SKIPPED];
+        if (finishedStatuses.includes(status)) {
+            setRunTour(false);
+            localStorage.setItem('benstocks_tour_complete', 'true');
         }
     };
 
-    // Fetch all dashboard data
+    // --- START: THIS IS THE CORRECTED DATA FETCHING LOGIC ---
     const fetchDashboardData = useCallback(async () => {
-        if (!user?.id) {
+        if (!user?.id) return;
+
+        try {
+            const [portfolioRes, liveValueRes, transactionsRes] = await Promise.all([
+                getPortfolio(user.id),
+                getPortfolioLiveValue(user.id),
+                getTransactions(user.id)
+            ]);
+            
+            // Portfolio and Chart Data
+            if (portfolioRes && portfolioRes.investments) {
+                setPortfolio(portfolioRes.investments);
+                if (portfolioRes.investments.length > 0) {
+                    const labels = portfolioRes.investments.map(inv => inv.symbol);
+                    const data = portfolioRes.investments.map(inv => inv.buy_cost_inr || 0);
+                    const backgroundColors = labels.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`);
+                    setChartData({ labels, datasets: [{ label: 'Investment Allocation (by Cost)', data, backgroundColor: backgroundColors }] });
+                } else {
+                    setChartData(null);
+                }
+            } else { setPortfolioError('Could not load portfolio.'); }
+
+            // Live Value Data
+            if (liveValueRes) {
+                setLivePortfolioValue(liveValueRes);
+                setInvestmentDetails(liveValueRes.investment_details || {});
+            } else { setLiveValueError('Could not load live values.'); }
+
+            // Transactions Data for Badges
+            if (transactionsRes) {
+                setTransactions(transactionsRes);
+            } else { setTransactionsError('Could not load transactions.'); }
+
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
+            setPortfolioError("An error occurred while fetching your data.");
+        } finally {
             setIsInitialLoading(false);
+        }
+    }, [user]);
+    // --- END: THIS IS THE CORRECTED DATA FETCHING LOGIC ---
+
+    useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
+
+    useEffect(() => {
+        if (symbol.trim() === '') {
+            setSuggestions([]);
             return;
         }
+        const fetchSuggestions = async () => {
+            setIsSearching(true);
+            const results = await searchStocks(symbol);
+            setSuggestions(results);
+            setIsSearching(false);
+        };
+        const debounceTimer = setTimeout(() => {
+            fetchSuggestions();
+        }, 300);
+        return () => clearTimeout(debounceTimer);
+    }, [symbol]);
 
-        await Promise.allSettled([
-            getPortfolio(user.id),
-            getPortfolioLiveValue(user.id),
-            getTransactions(user.id)
-        ]).then(results => {
-            // Portfolio & Chart Data
-            if (results[0].status === 'fulfilled' && results[0].value?.investments) {
-                const investments = results[0].value.investments;
-                setPortfolio(investments);
-                const labels = ['Cash'];
-                const cashValue = (typeof user.balance === 'number' && !isNaN(user.balance)) ? user.balance : 0;
-                const values = [cashValue];
-                investments.forEach(inv => {
-                    labels.push(inv.symbol);
-                    values.push(inv.buy_cost_inr || 0); // Use buy cost for allocation chart
-                });
-                const backgroundColors = ['#4A5568', '#4299E1', '#48BB78', '#ED8936', '#9F7AEA', '#E53E3E', '#38B2AC', '#ECC94B'];
-                setChartData({ labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => backgroundColors[i % backgroundColors.length]), borderColor: 'var(--bg-dark-secondary)', borderWidth: 2 }] });
-            } else { setPortfolioError('Failed to load portfolio.'); }
-
-            // Live Value & Investment Details
-            if (results[1].status === 'fulfilled' && results[1].value) {
-                const liveData = results[1].value;
-                setLivePortfolioValue(liveData);
-                if (liveData.investment_details) {
-                    setInvestmentDetails(liveData.investment_details);
-                }
-            } else { setLiveValueError('Failed to load live value.'); }
-
-            // Transactions (for Badges)
-            if (results[2].status === 'fulfilled' && Array.isArray(results[2].value)) {
-                setTransactions(results[2].value);
-            } else { setTransactionsError('Failed to load transactions.'); }
-
-            setIsInitialLoading(false); // Mark initial loading as complete
-        });
-    }, [user]);
-
-    // Fetch data on initial load and when user changes
-    useEffect(() => {
-        fetchDashboardData();
-    }, [fetchDashboardData]);
-
-    // Handle stock search
-    const handleCheckStock = async (e) => {
-        e.preventDefault();
-        if (!symbol) return;
-        setIsSearching(true);
-        setSearchError('');
-        try {
-          const data = await getStockPrice(symbol); // Check if stock exists
-          if (data.error) { throw new Error(data.error); }
-          navigate(`/stock/${symbol.toUpperCase()}`); // Navigate on success
-        } catch (err) {
-          setSearchError(err.message || 'Could not find stock.');
-        }
-        setIsSearching(false);
+    const handleSuggestionClick = (selectedSymbol) => {
+        setSymbol(selectedSymbol);
+        setSuggestions([]);
+        setIsSuggestionsVisible(false);
+        navigate(`/stock/${selectedSymbol}`);
     };
 
-    // Show skeleton loader during initial data fetch
     if (isInitialLoading) {
         return <div className="container"><DashboardSkeleton /></div>;
     }
 
-    // Render the main dashboard content
     return (
         <div className="container">
-            {/* Joyride Tour Component */}
             <Joyride
                 steps={tourSteps}
                 run={runTour}
                 callback={handleJoyrideCallback}
-                continuous
-                showProgress
-                showSkipButton
+                continuous showProgress showSkipButton
                 styles={{ options: { arrowColor: '#2d3748', backgroundColor: '#2d3748', primaryColor: '#4299e1', textColor: '#edf2f7' } }}
             />
 
-            {/* Page Header with Welcome and Balances */}
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h1>Welcome, {user?.username || 'Investor'}!</h1>
@@ -244,17 +254,12 @@ function Dashboard() {
                 </div>
             </div>
 
-             {/* --- START: ADDED CODE --- */}
-             {/* News Ticker Component */}
-             <div id="news-ticker"> {/* Added ID for tour */}
-                 <NewsTicker />
-             </div>
-             {/* --- END: ADDED CODE --- */}
+            <div id="news-ticker">
+                <NewsTicker />
+            </div>
 
-            {/* Badges Component */}
             {transactionsError ? <p style={{color: 'var(--danger)'}}>Failed to load badges data.</p> : <Badges transactions={transactions} />}
 
-            {/* Portfolio Allocation Accordion */}
             <AccordionHeader title="Portfolio Allocation (Buy Cost)" isOpen={isAllocationOpen} onClick={() => setIsAllocationOpen(!isAllocationOpen)} />
             <AccordionContent isOpen={isAllocationOpen}>
                 {portfolioError ? <p style={{color: 'var(--danger)'}}>{portfolioError}</p> : chartData ? (
@@ -264,18 +269,53 @@ function Dashboard() {
                 ) : <p>No investments yet to show allocation.</p>}
             </AccordionContent>
 
-            {/* Stock Checker Accordion */}
             <AccordionHeader title="Stock Checker" isOpen={isCheckerOpen} onClick={() => setIsCheckerOpen(!isCheckerOpen)} />
             <AccordionContent isOpen={isCheckerOpen}>
-                <p>Enter a stock symbol to view its details and purchase shares.</p>
-                <form id="stock-checker-form" onSubmit={handleCheckStock} style={{ display: 'flex', gap: '1rem' }}>
-                    <input type="text" placeholder="e.g., AAPL or RELIANCE.NS" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} style={{ flex: 1 }} />
-                    <button type="submit" disabled={isSearching}>{isSearching ? 'Checking...' : 'Check Stock'}</button>
-                </form>
-                {searchError && <p style={{ color: 'var(--danger)', marginTop: '1rem' }}>{searchError}</p>}
+                <p>Enter a stock symbol or company name to search.</p>
+                <div style={{ position: 'relative' }}>
+                    <form id="stock-checker-form" style={{ display: 'flex', gap: '1rem' }} onSubmit={(e) => e.preventDefault()}>
+                        <input
+                            type="text"
+                            placeholder="e.g., AAPL or Reliance"
+                            value={symbol}
+                            onChange={(e) => {
+                                setSymbol(e.target.value);
+                                setIsSuggestionsVisible(true);
+                            }}
+                            onBlur={() => setTimeout(() => setIsSuggestionsVisible(false), 200)}
+                            style={{ flex: 1 }}
+                        />
+                    </form>
+
+                    {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
+                        <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0,
+                            background: 'var(--bg-dark-primary)',
+                            border: '1px solid var(--border-color)', borderRadius: '0 0 8px 8px',
+                            marginTop: '-1px',
+                            zIndex: 10, maxHeight: '300px', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.2)'
+                        }}>
+                            {isSearching && <div style={{ padding: '1rem', color: 'var(--text-secondary)', textAlign: 'center' }}>Searching...</div>}
+                            {!isSearching && suggestions.map((s) => (
+                                <div
+                                    key={s.symbol}
+                                    onMouseDown={() => handleSuggestionClick(s.symbol)}
+                                    style={{
+                                        padding: '0.75rem 1rem', cursor: 'pointer',
+                                        borderBottom: '1px solid var(--border-color)',
+                                    }}
+                                    className="suggestion-item"
+                                >
+                                    <strong style={{ color: 'var(--text-primary)' }}>{s.symbol}</strong>
+                                    <span style={{ marginLeft: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9em' }}>{s.name}</span>
+                                </div>
+                            ))}
+                            {!isSearching && suggestions.length > 0 && <style>{`.suggestion-item:last-child { border-bottom: none; }`}</style>}
+                        </div>
+                    )}
+                </div>
             </AccordionContent>
 
-            {/* Holdings Accordion */}
             <AccordionHeader id="holdings-section" title="Your Holdings" isOpen={isHoldingsOpen} onClick={() => setIsHoldingsOpen(!isHoldingsOpen)} />
             <AccordionContent isOpen={isHoldingsOpen}>
                 {portfolioError ? <p style={{color: 'var(--danger)'}}>{portfolioError}</p> : portfolio.length === 0 ? <p>You have no investments yet.</p> : (
@@ -284,8 +324,8 @@ function Dashboard() {
                             <StockCard
                                 key={inv.id}
                                 investment={inv}
-                                fetchPortfolio={fetchDashboardData} // Pass refetch function
-                                liveDetails={investmentDetails[inv.id]} // Pass live value for P/L
+                                fetchPortfolio={fetchDashboardData}
+                                liveDetails={investmentDetails[inv.id]}
                             />
                         ))}
                     </div>
