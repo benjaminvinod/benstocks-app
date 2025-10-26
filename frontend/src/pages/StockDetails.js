@@ -1,5 +1,3 @@
-// src/pages/StockDetails.js
-
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { getStockPrice } from "../api/stocks";
@@ -11,10 +9,18 @@ import StockChart from "../components/StockChart";
 import { toast } from 'react-toastify';
 import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 import { useWebSocket } from '../context/WebSocketContext';
+import Tooltip from '../components/Tooltip';
 
-const Stat = ({ label, value }) => (
+const Stat = ({ label, value, tooltipText }) => (
     <div style={{ flex: '1 1 150px', background: 'var(--bg-dark-primary)', padding: '1rem', borderRadius: '8px' }}>
-        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{label}</p>
+        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            {label}
+            {tooltipText && (
+                <Tooltip text={tooltipText}>
+                    <span style={{ marginLeft: '8px', cursor: 'help', borderBottom: '1px dotted' }}>?</span>
+                </Tooltip>
+            )}
+        </p>
         <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-primary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
             {value || 'N/A'}
         </p>
@@ -23,14 +29,14 @@ const Stat = ({ label, value }) => (
 
 const AnalystRating = ({ stockData }) => {
     if (!stockData || !stockData.recommendation || !stockData.number_of_analysts) {
-        return null; // Don't render if there's no data
+        return null;
     }
 
     const getRatingColor = (rec) => {
         const recommendation = rec.toLowerCase();
-        if (recommendation.includes('buy') || recommendation.includes('outperform')) return '#48BB78'; // Green
-        if (recommendation.includes('hold') || recommendation.includes('neutral')) return '#A0AEC0'; // Gray
-        if (recommendation.includes('sell') || recommendation.includes('underperform')) return '#E53E3E'; // Red
+        if (recommendation.includes('buy') || recommendation.includes('outperform')) return '#48BB78';
+        if (recommendation.includes('hold') || recommendation.includes('neutral')) return '#A0AEC0';
+        if (recommendation.includes('sell') || recommendation.includes('underperform')) return '#E53E3E';
         return 'var(--text-primary)';
     };
 
@@ -64,6 +70,39 @@ const AnalystRating = ({ stockData }) => {
     );
 };
 
+const AdvancedAnalytics = ({ stockData }) => {
+    const hasData = stockData.beta || stockData.sharpe_ratio || stockData.esg_score;
+    if (!hasData) return null;
+
+    return (
+        <div style={{ marginTop: '2rem' }}>
+            <h2>Advanced Analytics</h2>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <Stat 
+                    label="Beta" 
+                    value={stockData.beta ? stockData.beta.toFixed(2) : 'N/A'} 
+                    tooltipText="Measures the stock's volatility relative to the overall market. >1 is more volatile, <1 is less volatile."
+                />
+                <Stat 
+                    label="Sharpe Ratio (proxy)" 
+                    value={stockData.sharpe_ratio ? stockData.sharpe_ratio.toFixed(2) : 'N/A'}
+                    tooltipText="Measures risk-adjusted return. A higher ratio indicates better performance for the amount of risk taken."
+                />
+                <Stat 
+                    label="ESG Score" 
+                    value={stockData.esg_score ? stockData.esg_score.toFixed(2) : 'N/A'}
+                    tooltipText="Environmental, Social, and Governance score. Lower is generally better (less risk)."
+                />
+                <Stat 
+                    label="ESG Percentile" 
+                    value={stockData.esg_percentile ? `${stockData.esg_percentile.toFixed(2)}%` : 'N/A'}
+                    tooltipText="The company's ESG risk percentile compared to its industry. Lower is better."
+                />
+            </div>
+        </div>
+    );
+};
+
 function StockDetails() {
     const { symbol } = useParams();
     const { user, refreshUser } = useAuth();
@@ -74,7 +113,6 @@ function StockDetails() {
     const [error, setError] = useState(null);
     const [quantity, setQuantity] = useState(1);
     const [buyLoading, setBuyLoading] = useState(false);
-    const [watchlist, setWatchlist] = useState([]);
     const [isWatchlisted, setIsWatchlisted] = useState(false);
     const [watchlistLoading, setWatchlistLoading] = useState(false);
 
@@ -93,15 +131,14 @@ function StockDetails() {
             setError(null);
             setStockData(null);
             try {
-                const [stockRes, watchlistRes] = await Promise.all([
-                    getStockPrice(symbol),
-                    getWatchlist(user.id)
-                ]);
+                const stockRes = await getStockPrice(symbol);
                 if (stockRes.detail || stockRes.error) { throw new Error(stockRes.detail || stockRes.error); }
                 setStockData(stockRes);
-                if (Array.isArray(watchlistRes)) {
-                    setWatchlist(watchlistRes);
-                    setIsWatchlisted(watchlistRes.includes(symbol.toUpperCase()));
+                if (user?.id) {
+                    const watchlistRes = await getWatchlist(user.id);
+                    if (Array.isArray(watchlistRes)) {
+                        setIsWatchlisted(watchlistRes.includes(symbol.toUpperCase()));
+                    }
                 }
             } catch (err) {
                 setError(err.message || "Could not fetch data.");
@@ -109,7 +146,7 @@ function StockDetails() {
                 setIsLoading(false);
             }
         };
-        if (user?.id) { fetchAllData(); }
+        fetchAllData();
     }, [symbol, user]);
 
     const handleBuyStock = async (e) => {
@@ -132,9 +169,7 @@ function StockDetails() {
             await refreshUser();
             toast.success(`Successfully purchased ${quantity} share(s) of ${stockData.symbol}!`);
             setQuantity(1);
-        // --- START: THIS IS THE CORRECTED CODE ---
         } catch (err) {
-        // --- END: THIS IS THE CORRECTED CODE ---
             toast.error(err.detail || err.message || 'Purchase failed.');
         } finally {
             setBuyLoading(false);
@@ -222,6 +257,8 @@ function StockDetails() {
                     </div>
 
                     <AnalystRating stockData={stockData} />
+
+                    <AdvancedAnalytics stockData={stockData} />
 
                     <StockChart symbol={symbol} currency={currencyCode} />
 

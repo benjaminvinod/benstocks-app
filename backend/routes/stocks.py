@@ -16,26 +16,20 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
     if not query:
         return []
 
-    # Using the unofficial Yahoo Finance search endpoint
     url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
-    # Yahoo often requires a User-Agent header to mimic a browser
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
 
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()
         data = response.json()
 
-        # Extract the relevant data ("quotes") from the response structure
         results = data.get("quotes", [])
 
-        # Format the results into a clean list suitable for the frontend
         suggestions = []
         for result in results:
-            # We only want results that have both a symbol and a name,
-            # and preferably are actual stocks (EQUITY).
             symbol = result.get("symbol")
-            name = result.get("longname") or result.get("shortname") # Use longname if available
+            name = result.get("longname") or result.get("shortname")
             quote_type = result.get("quoteType")
 
             if symbol and name and quote_type == "EQUITY":
@@ -44,15 +38,12 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
                     "name": name
                 })
 
-        # Limit the number of suggestions to avoid overwhelming the user
-        return suggestions[:7] # Return the top 7 equity results
+        return suggestions[:7]
 
     except requests.RequestException as e:
-        # Handle errors during the API request itself
         print(f"Error fetching from Yahoo search API: {e}")
         raise HTTPException(status_code=503, detail="Failed to connect to financial data provider for search.")
     except Exception as e:
-        # Handle any other unexpected errors during processing
         print(f"Error processing search results: {e}")
         raise HTTPException(status_code=500, detail="Error processing search results.")
 
@@ -81,11 +72,15 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
             "dividend_yield": data.get("dividend_yield"),
             "week_52_high": data.get("week_52_high"),
             "week_52_low": data.get("week_52_low"),
-            # --- START: ADDED CODE ---
             "recommendation": data.get("recommendation"),
             "number_of_analysts": data.get("number_of_analysts"),
             "target_price": data.get("target_price"),
-            # --- END: ADDED CODE ---
+            # --- START: ADDED ADVANCED ANALYTICS ---
+            "beta": data.get("beta"),
+            "sharpe_ratio": data.get("sharpe_ratio"),
+            "esg_score": data.get("esg_score"),
+            "esg_percentile": data.get("esg_percentile"),
+            # --- END: ADDED ADVANCED ANALYTICS ---
         }
 
         if not all([stock_data["open"], stock_data["high"], stock_data["low"], stock_data["close"]]):

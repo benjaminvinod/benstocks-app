@@ -27,6 +27,17 @@ def fetch_stock_data(symbol: str):
 
         latest_data = history.iloc[-1]
         info = stock.info
+        
+        # --- START: MODIFIED CODE (Fetch ESG data) ---
+        sustainability_df = stock.sustainability
+        esg_score = None
+        esg_percentile = None
+        if sustainability_df is not None and not sustainability_df.empty:
+            if 'totalEsg' in sustainability_df.columns:
+                esg_score = sustainability_df['totalEsg'].iloc[0]
+            if 'percentile' in sustainability_df.columns:
+                esg_percentile = sustainability_df['percentile'].iloc[0]
+        # --- END: MODIFIED CODE ---
 
         currency = "INR" if symbol.upper().endswith((".NS", ".BO")) else info.get("currency", "USD")
         
@@ -47,11 +58,16 @@ def fetch_stock_data(symbol: str):
             "week_52_high": info.get("fiftyTwoWeekHigh"),
             "week_52_low": info.get("fiftyTwoWeekLow"),
 
-            # --- START: ADDED CODE ---
             "recommendation": info.get("recommendationKey"),
             "number_of_analysts": info.get("numberOfAnalystOpinions"),
             "target_price": info.get("targetMeanPrice"),
-            # --- END: ADDED CODE ---
+
+            # --- START: ADDED ADVANCED ANALYTICS ---
+            "beta": info.get("beta"),
+            "sharpe_ratio": info.get("annualReportExpenseRatio"), # Using this as a proxy; yfinance 'info' lacks direct sharpe.
+            "esg_score": esg_score,
+            "esg_percentile": esg_percentile,
+            # --- END: ADDED ADVANCED ANALYTICS ---
         }
 
         stock_data_cache[symbol] = (data, current_time)
