@@ -129,24 +129,53 @@ function Dashboard() {
                 getPortfolioLiveValue(user.id),
                 getTransactions(user.id)
             ]);
+            
             if (portfolioRes && portfolioRes.investments) {
-                setPortfolio(portfolioRes.investments);
-                if (portfolioRes.investments.length > 0) {
-                    const labels = portfolioRes.investments.map(inv => inv.symbol);
-                    const data = portfolioRes.investments.map(inv => inv.buy_cost_inr || 0);
+                // --- START: THIS IS THE NEW CONSOLIDATION LOGIC ---
+                const holdings = {};
+
+                portfolioRes.investments.forEach(inv => {
+                    if (holdings[inv.symbol]) {
+                        // If we already have this stock, add to its totals
+                        holdings[inv.symbol].quantity += inv.quantity;
+                        holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
+                        // Keep track of original IDs if needed for selling, though this example simplifies it
+                    } else {
+                        // If it's a new stock, create its entry
+                        holdings[inv.symbol] = { ...inv };
+                    }
+                });
+
+                // Convert the holdings object back to an array
+                const consolidatedPortfolio = Object.values(holdings).map(holding => {
+                    // Calculate the new average buy price
+                    const average_buy_price = holding.buy_cost_inr / holding.quantity;
+                    return { ...holding, buy_price: average_buy_price };
+                });
+                
+                setPortfolio(consolidatedPortfolio);
+
+                if (consolidatedPortfolio.length > 0) {
+                    const labels = consolidatedPortfolio.map(inv => inv.symbol);
+                    const data = consolidatedPortfolio.map(inv => inv.buy_cost_inr || 0);
                     const backgroundColors = labels.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`);
                     setChartData({ labels, datasets: [{ label: 'Investment Allocation (by Cost)', data, backgroundColor: backgroundColors }] });
                 } else {
                     setChartData(null);
                 }
+                // --- END: NEW CONSOLIDATION LOGIC ---
+
             } else { setPortfolioError('Could not load portfolio.'); }
+            
             if (liveValueRes) {
                 setLivePortfolioValue(liveValueRes);
                 setInvestmentDetails(liveValueRes.investment_details || {});
             } else { setLiveValueError('Could not load live values.'); }
+            
             if (transactionsRes) {
                 setTransactions(transactionsRes);
             } else { setTransactionsError('Could not load transactions.'); }
+
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             setPortfolioError("An error occurred while fetching your data.");
