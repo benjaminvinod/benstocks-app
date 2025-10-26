@@ -7,10 +7,8 @@ import { WebSocketProvider } from './context/WebSocketContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// --- START: ADDED CODE ---
 import { ChakraProvider } from '@chakra-ui/react';
-import theme from './theme'; // Import our custom theme
-// --- END: ADDED CODE ---
+import theme from './theme';
 
 // Page Imports
 import Disclaimer from './pages/Disclaimer';
@@ -25,6 +23,7 @@ import Transactions from './pages/Transactions';
 import Leaderboard from './pages/Leaderboard';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import RiskProfile from './pages/RiskProfile'; // --- START: ADDED CODE ---
 
 // Component Imports
 import Header from './components/Header';
@@ -33,8 +32,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
-    // --- START: MODIFIED CODE ---
-    // Wrap the entire application with ChakraProvider and pass our theme
     <ChakraProvider theme={theme}>
       <AuthProvider>
         <WebSocketProvider>
@@ -44,7 +41,6 @@ function App() {
         </WebSocketProvider>
       </AuthProvider>
     </ChakraProvider>
-    // --- END: MODIFIED CODE ---
   );
 }
 
@@ -60,7 +56,6 @@ function AppContent() {
       <Header />
       <main style={{ flex: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>
         <Routes>
-          {/* All your routes remain the same */}
           <Route path="/" element={<Navigate to="/disclaimer" />} />
           <Route path="/disclaimer" element={<Disclaimer />} />
           <Route path="/learn" element={<Learn />} />
@@ -75,6 +70,7 @@ function AppContent() {
             <Route path="/etfs" element={<ETFs />} />
             <Route path="/mutual-funds" element={<MutualFunds />} />
             <Route path="/transactions" element={<Transactions />} />
+            <Route path="/risk-profile" element={<RiskProfile />} /> {/* --- START: ADDED CODE --- */}
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>

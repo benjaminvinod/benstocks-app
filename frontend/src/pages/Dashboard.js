@@ -4,22 +4,19 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getPortfolio, getPortfolioLiveValue, getTransactions } from '../api/portfolio';
 import { searchStocks } from '../api/stocksApi';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // --- START: MODIFIED CODE (Import Link) ---
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import Badges from '../components/Badges';
 import NewsTicker from '../components/NewsTicker';
-
 import Skeleton, { SkeletonTheme } from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
-
 import Joyride, { STATUS } from 'react-joyride';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Accordion Components
 const AccordionHeader = ({ id, title, isOpen, onClick }) => (
     <div
         id={id}
@@ -56,7 +53,6 @@ const AccordionContent = ({ isOpen, children }) => (
     </div>
 );
 
-// Skeleton Loader Component
 const DashboardSkeleton = () => (
     <SkeletonTheme baseColor="#2d3748" highlightColor="#4a5568">
        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -80,57 +76,63 @@ const DashboardSkeleton = () => (
          </div>
        </div>
     </SkeletonTheme>
-  );
+);
 
-// Main Dashboard Component
+// --- START: ADDED CODE (New Component) ---
+const RiskProfileCard = () => (
+    <div style={{
+        background: 'linear-gradient(90deg, var(--brand-primary) 0%, var(--brand-hover) 100%)',
+        padding: '1.5rem 2rem',
+        borderRadius: '12px',
+        marginBottom: '2rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+    }}>
+        <div>
+            <h3 style={{ marginTop: 0, color: 'white' }}>What kind of investor are you?</h3>
+            <p style={{ margin: 0, color: 'rgba(255, 255, 255, 0.9)' }}>Take a quick test to find your risk profile and get investment suggestions.</p>
+        </div>
+        <Link to="/risk-profile" style={{
+            backgroundColor: 'white',
+            color: 'var(--brand-primary)',
+            padding: '0.75rem 1.5rem',
+            borderRadius: '8px',
+            textDecoration: 'none',
+            fontWeight: 'bold'
+        }}>
+            Start Now
+        </Link>
+    </div>
+);
+// --- END: ADDED CODE ---
+
+
 function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
-
-    // Data States
     const [portfolio, setPortfolio] = useState([]);
     const [chartData, setChartData] = useState(null);
     const [livePortfolioValue, setLivePortfolioValue] = useState(null);
     const [transactions, setTransactions] = useState([]);
     const [investmentDetails, setInvestmentDetails] = useState({});
-
-    // Loading & Error States
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [portfolioError, setPortfolioError] = useState('');
     const [liveValueError, setLiveValueError] = useState('');
     const [transactionsError, setTransactionsError] = useState('');
-
-    // Search State
     const [symbol, setSymbol] = useState('');
-    const [searchError, setSearchError] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
     const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
-
-    // Accordion State
     const [isAllocationOpen, setIsAllocationOpen] = useState(false);
     const [isCheckerOpen, setIsCheckerOpen] = useState(true);
     const [isHoldingsOpen, setIsHoldingsOpen] = useState(true);
-
-    // Tour State
     const [runTour, setRunTour] = useState(false);
     const tourSteps = [
-        {
-            target: '#cash-balance',
-            content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!',
-        },
-        {
-            target: '#stock-checker-form',
-            content: 'Search for any stock here to see its details and historical performance.',
-        },
-        {
-            target: '#holdings-section',
-            content: 'Your purchased investments will appear in this section.',
-        },
-        {
-            target: '#news-ticker',
-            content: 'Check out the latest financial news to help inform your investment decisions.',
-        },
+        { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
+        { target: '#stock-checker-form', content: 'Search for any stock here to see its details and historical performance.' },
+        { target: '#holdings-section', content: 'Your purchased investments will appear in this section.' },
+        { target: '#news-ticker', content: 'Check out the latest financial news to help inform your investment decisions.' },
     ];
 
     useEffect(() => {
@@ -149,18 +151,14 @@ function Dashboard() {
         }
     };
 
-    // --- START: THIS IS THE CORRECTED DATA FETCHING LOGIC ---
     const fetchDashboardData = useCallback(async () => {
         if (!user?.id) return;
-
         try {
             const [portfolioRes, liveValueRes, transactionsRes] = await Promise.all([
                 getPortfolio(user.id),
                 getPortfolioLiveValue(user.id),
                 getTransactions(user.id)
             ]);
-            
-            // Portfolio and Chart Data
             if (portfolioRes && portfolioRes.investments) {
                 setPortfolio(portfolioRes.investments);
                 if (portfolioRes.investments.length > 0) {
@@ -172,18 +170,13 @@ function Dashboard() {
                     setChartData(null);
                 }
             } else { setPortfolioError('Could not load portfolio.'); }
-
-            // Live Value Data
             if (liveValueRes) {
                 setLivePortfolioValue(liveValueRes);
                 setInvestmentDetails(liveValueRes.investment_details || {});
             } else { setLiveValueError('Could not load live values.'); }
-
-            // Transactions Data for Badges
             if (transactionsRes) {
                 setTransactions(transactionsRes);
             } else { setTransactionsError('Could not load transactions.'); }
-
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             setPortfolioError("An error occurred while fetching your data.");
@@ -191,7 +184,6 @@ function Dashboard() {
             setIsInitialLoading(false);
         }
     }, [user]);
-    // --- END: THIS IS THE CORRECTED DATA FETCHING LOGIC ---
 
     useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
@@ -254,11 +246,12 @@ function Dashboard() {
                 </div>
             </div>
 
-            <div id="news-ticker">
-                <NewsTicker />
-            </div>
-
+            <div id="news-ticker"><NewsTicker /></div>
             {transactionsError ? <p style={{color: 'var(--danger)'}}>Failed to load badges data.</p> : <Badges transactions={transactions} />}
+
+            {/* --- START: ADDED CODE (Render the new card) --- */}
+            <RiskProfileCard />
+            {/* --- END: ADDED CODE --- */}
 
             <AccordionHeader title="Portfolio Allocation (Buy Cost)" isOpen={isAllocationOpen} onClick={() => setIsAllocationOpen(!isAllocationOpen)} />
             <AccordionContent isOpen={isAllocationOpen}>
@@ -286,7 +279,6 @@ function Dashboard() {
                             style={{ flex: 1 }}
                         />
                     </form>
-
                     {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
                         <div style={{
                             position: 'absolute', top: '100%', left: 0, right: 0,
@@ -300,12 +292,8 @@ function Dashboard() {
                                 <div
                                     key={s.symbol}
                                     onMouseDown={() => handleSuggestionClick(s.symbol)}
-                                    style={{
-                                        padding: '0.75rem 1rem', cursor: 'pointer',
-                                        borderBottom: '1px solid var(--border-color)',
-                                    }}
-                                    className="suggestion-item"
-                                >
+                                    style={{ padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border-color)'}}
+                                    className="suggestion-item" >
                                     <strong style={{ color: 'var(--text-primary)' }}>{s.symbol}</strong>
                                     <span style={{ marginLeft: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9em' }}>{s.name}</span>
                                 </div>
