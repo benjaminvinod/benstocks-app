@@ -1,10 +1,10 @@
 // src/pages/Dashboard.js
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions } from '../api/portfolio';
 import { searchStocks } from '../api/stocksApi';
-import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom'; // --- START: MODIFIED CODE (Import Link) ---
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
 import { Pie } from 'react-chartjs-2';
@@ -78,56 +78,26 @@ const DashboardSkeleton = () => (
     </SkeletonTheme>
 );
 
-// --- START: ADDED CODE (New Component) ---
-const RiskProfileCard = () => (
-    <div style={{
-        background: 'linear-gradient(90deg, var(--brand-primary) 0%, var(--brand-hover) 100%)',
-        padding: '1.5rem 2rem',
-        borderRadius: '12px',
-        marginBottom: '2rem',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-    }}>
-        <div>
-            <h3 style={{ marginTop: 0, color: 'white' }}>What kind of investor are you?</h3>
-            <p style={{ margin: 0, color: 'rgba(255, 255, 255, 0.9)' }}>Take a quick test to find your risk profile and get investment suggestions.</p>
-        </div>
-        <Link to="/risk-profile" style={{
-            backgroundColor: 'white',
-            color: 'var(--brand-primary)',
-            padding: '0.75rem 1.5rem',
-            borderRadius: '8px',
-            textDecoration: 'none',
-            fontWeight: 'bold'
-        }}>
-            Start Now
-        </Link>
-    </div>
-);
-// --- END: ADDED CODE ---
-
-
 function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [portfolio, setPortfolio] = useState([]);
-    const [chartData, setChartData] = useState(null);
-    const [livePortfolioValue, setLivePortfolioValue] = useState(null);
-    const [transactions, setTransactions] = useState([]);
-    const [investmentDetails, setInvestmentDetails] = useState({});
-    const [isInitialLoading, setIsInitialLoading] = useState(true);
-    const [portfolioError, setPortfolioError] = useState('');
-    const [liveValueError, setLiveValueError] = useState('');
-    const [transactionsError, setTransactionsError] = useState('');
-    const [symbol, setSymbol] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
-    const [suggestions, setSuggestions] = useState([]);
-    const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
-    const [isAllocationOpen, setIsAllocationOpen] = useState(false);
-    const [isCheckerOpen, setIsCheckerOpen] = useState(true);
-    const [isHoldingsOpen, setIsHoldingsOpen] = useState(true);
-    const [runTour, setRunTour] = useState(false);
+    const [portfolio, setPortfolio] = React.useState([]);
+    const [chartData, setChartData] = React.useState(null);
+    const [livePortfolioValue, setLivePortfolioValue] = React.useState(null);
+    const [transactions, setTransactions] = React.useState([]);
+    const [investmentDetails, setInvestmentDetails] = React.useState({});
+    const [isInitialLoading, setIsInitialLoading] = React.useState(true);
+    const [portfolioError, setPortfolioError] = React.useState('');
+    const [liveValueError, setLiveValueError] = React.useState('');
+    const [transactionsError, setTransactionsError] = React.useState('');
+    const [symbol, setSymbol] = React.useState('');
+    const [isSearching, setIsSearching] = React.useState(false);
+    const [suggestions, setSuggestions] = React.useState([]);
+    const [isSuggestionsVisible, setIsSuggestionsVisible] = React.useState(false);
+    const [isAllocationOpen, setIsAllocationOpen] = React.useState(false);
+    const [isCheckerOpen, setIsCheckerOpen] = React.useState(true);
+    const [isHoldingsOpen, setIsHoldingsOpen] = React.useState(true);
+    const [runTour, setRunTour] = React.useState(false);
     const tourSteps = [
         { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
         { target: '#stock-checker-form', content: 'Search for any stock here to see its details and historical performance.' },
@@ -135,7 +105,7 @@ function Dashboard() {
         { target: '#news-ticker', content: 'Check out the latest financial news to help inform your investment decisions.' },
     ];
 
-    useEffect(() => {
+    React.useEffect(() => {
         const hasTakenTour = localStorage.getItem('benstocks_tour_complete');
         if (!hasTakenTour && !isInitialLoading) {
             setRunTour(true);
@@ -151,7 +121,7 @@ function Dashboard() {
         }
     };
 
-    const fetchDashboardData = useCallback(async () => {
+    const fetchDashboardData = React.useCallback(async () => {
         if (!user?.id) return;
         try {
             const [portfolioRes, liveValueRes, transactionsRes] = await Promise.all([
@@ -185,9 +155,9 @@ function Dashboard() {
         }
     }, [user]);
 
-    useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
+    React.useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
-    useEffect(() => {
+    React.useEffect(() => {
         if (symbol.trim() === '') {
             setSuggestions([]);
             return;
@@ -248,10 +218,6 @@ function Dashboard() {
 
             <div id="news-ticker"><NewsTicker /></div>
             {transactionsError ? <p style={{color: 'var(--danger)'}}>Failed to load badges data.</p> : <Badges transactions={transactions} />}
-
-            {/* --- START: ADDED CODE (Render the new card) --- */}
-            <RiskProfileCard />
-            {/* --- END: ADDED CODE --- */}
 
             <AccordionHeader title="Portfolio Allocation (Buy Cost)" isOpen={isAllocationOpen} onClick={() => setIsAllocationOpen(!isAllocationOpen)} />
             <AccordionContent isOpen={isAllocationOpen}>
