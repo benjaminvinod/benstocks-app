@@ -1,6 +1,6 @@
 // src/pages/Dashboard.js
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions } from '../api/portfolio';
@@ -81,23 +81,23 @@ const DashboardSkeleton = () => (
 function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [portfolio, setPortfolio] = React.useState([]);
-    const [chartData, setChartData] = React.useState(null);
-    const [livePortfolioValue, setLivePortfolioValue] = React.useState(null);
-    const [transactions, setTransactions] = React.useState([]);
-    const [investmentDetails, setInvestmentDetails] = React.useState({});
-    const [isInitialLoading, setIsInitialLoading] = React.useState(true);
-    const [portfolioError, setPortfolioError] = React.useState('');
-    const [liveValueError, setLiveValueError] = React.useState('');
-    const [transactionsError, setTransactionsError] = React.useState('');
-    const [symbol, setSymbol] = React.useState('');
-    const [isSearching, setIsSearching] = React.useState(false);
-    const [suggestions, setSuggestions] = React.useState([]);
-    const [isSuggestionsVisible, setIsSuggestionsVisible] = React.useState(false);
-    const [isAllocationOpen, setIsAllocationOpen] = React.useState(false);
-    const [isCheckerOpen, setIsCheckerOpen] = React.useState(true);
-    const [isHoldingsOpen, setIsHoldingsOpen] = React.useState(true);
-    const [runTour, setRunTour] = React.useState(false);
+    const [portfolio, setPortfolio] = useState([]);
+    const [chartData, setChartData] = useState(null);
+    const [livePortfolioValue, setLivePortfolioValue] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [investmentDetails, setInvestmentDetails] = useState({});
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
+    const [portfolioError, setPortfolioError] = useState('');
+    const [liveValueError, setLiveValueError] = useState('');
+    const [transactionsError, setTransactionsError] = useState('');
+    const [symbol, setSymbol] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [suggestions, setSuggestions] = useState([]);
+    const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
+    const [isAllocationOpen, setIsAllocationOpen] = useState(false);
+    const [isCheckerOpen, setIsCheckerOpen] = useState(true);
+    const [isHoldingsOpen, setIsHoldingsOpen] = useState(true);
+    const [runTour, setRunTour] = useState(false);
     const tourSteps = [
         { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
         { target: '#stock-checker-form', content: 'Search for any stock here to see its details and historical performance.' },
@@ -105,7 +105,7 @@ function Dashboard() {
         { target: '#news-ticker', content: 'Check out the latest financial news to help inform your investment decisions.' },
     ];
 
-    React.useEffect(() => {
+    useEffect(() => {
         const hasTakenTour = localStorage.getItem('benstocks_tour_complete');
         if (!hasTakenTour && !isInitialLoading) {
             setRunTour(true);
@@ -121,7 +121,7 @@ function Dashboard() {
         }
     };
 
-    const fetchDashboardData = React.useCallback(async () => {
+    const fetchDashboardData = useCallback(async () => {
         if (!user?.id) return;
         try {
             const [portfolioRes, liveValueRes, transactionsRes] = await Promise.all([
@@ -155,9 +155,9 @@ function Dashboard() {
         }
     }, [user]);
 
-    React.useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
+    useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (symbol.trim() === '') {
             setSuggestions([]);
             return;

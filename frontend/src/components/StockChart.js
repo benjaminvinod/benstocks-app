@@ -10,7 +10,9 @@ import 'chartjs-adapter-date-fns';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, Filler); 
 
-function StockChart({ symbol }) {
+// --- START: MODIFIED CODE (Accepts currency prop) ---
+function StockChart({ symbol, currency }) {
+// --- END: MODIFIED CODE ---
   const [chartData, setChartData] = useState(null);
   const [period, setPeriod] = useState('1y');
   const [loading, setLoading] = useState(true);
@@ -84,59 +86,59 @@ function StockChart({ symbol }) {
 
   }, [symbol, period]); 
 
-  // --- START: MODIFIED CODE ---
-  // The old placeholder comment is replaced with this complete options object.
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     scales: {
       x: {
-        type: 'time', // Crucially, tell the chart the X-axis is for time
+        type: 'time',
         time: {
-          unit: 'month', // Display months on the axis
-          tooltipFormat: 'MMM dd, yyyy', // Format for hover tooltip
+          unit: 'month',
+          tooltipFormat: 'MMM dd, yyyy',
         },
-        ticks: {
-          color: 'var(--text-secondary)',
-          maxRotation: 0,
-          autoSkip: true,
-          maxTicksLimit: 7,
-        },
-        grid: {
-          color: 'rgba(74, 85, 104, 0.4)', // Faint grid lines
-        }
+        ticks: { color: 'var(--text-secondary)', maxRotation: 0, autoSkip: true, maxTicksLimit: 7 },
+        grid: { color: 'rgba(74, 85, 104, 0.4)' }
       },
       y: {
         ticks: {
           color: 'var(--text-secondary)',
-          // Add currency formatting to the Y-axis labels
-          callback: function(value, index, values) {
-            return '$' + value.toLocaleString();
+          // --- START: MODIFIED CODE (Uses currency prop for formatting) ---
+          callback: function(value) {
+            const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+            return new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency: currency,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(value);
           }
+          // --- END: MODIFIED CODE ---
         },
-        grid: {
-          color: 'rgba(74, 85, 104, 0.4)',
-        }
+        grid: { color: 'rgba(74, 85, 104, 0.4)' }
       }
     },
     plugins: {
-      legend: {
-        display: false, // Hide the legend label at the top
-      },
+      legend: { display: false },
       tooltip: {
         mode: 'index',
         intersect: false,
         callbacks: {
+            // --- START: MODIFIED CODE (Uses currency prop for formatting) ---
             label: function(context) {
                 let label = context.dataset.label || '';
-                if (label) {
-                    label += ': ';
-                }
+                if (label) { label += ': '; }
                 if (context.parsed.y !== null) {
-                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                    const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+                    label += new Intl.NumberFormat(locale, {
+                        style: 'currency',
+                        currency: currency,
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    }).format(context.parsed.y);
                 }
                 return label;
             }
+            // --- END: MODIFIED CODE ---
         }
       }
     },
@@ -145,7 +147,6 @@ function StockChart({ symbol }) {
         intersect: false,
     },
   };
-  // --- END: MODIFIED CODE ---
   
   const periodButtons = ['1mo', '3mo', '6mo', '1y', '5y', 'max'];
 

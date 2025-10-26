@@ -29,10 +29,7 @@ def fetch_stock_data(symbol: str):
         info = stock.info
 
         currency = "INR" if symbol.upper().endswith((".NS", ".BO")) else info.get("currency", "USD")
-
-        # --- START: MODIFIED CODE ---
-        # Prioritize a truly live price. Fallback to the daily close if not available.
-        # This is the core of the fix.
+        
         live_price = info.get("currentPrice") or info.get("regularMarketPrice") or latest_data["Close"]
         
         data = {
@@ -41,18 +38,21 @@ def fetch_stock_data(symbol: str):
             "open": round(latest_data["Open"], 2),
             "high": round(latest_data["High"], 2),
             "low": round(latest_data["Low"], 2),
-            # 'close' now represents the live price for consistency in our app
             "close": round(live_price, 2),
             "currency": currency,
             
-            # Additional fields
             "market_cap": info.get("marketCap"),
             "pe_ratio": info.get("trailingPE"),
             "dividend_yield": info.get("dividendYield"),
             "week_52_high": info.get("fiftyTwoWeekHigh"),
             "week_52_low": info.get("fiftyTwoWeekLow"),
+
+            # --- START: ADDED CODE ---
+            "recommendation": info.get("recommendationKey"),
+            "number_of_analysts": info.get("numberOfAnalystOpinions"),
+            "target_price": info.get("targetMeanPrice"),
+            # --- END: ADDED CODE ---
         }
-        # --- END: MODIFIED CODE ---
 
         stock_data_cache[symbol] = (data, current_time)
         return data

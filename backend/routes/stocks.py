@@ -1,6 +1,6 @@
 import pandas as pd
 import yfinance as yf
-import requests # Make sure requests is imported
+import requests 
 
 from fastapi import APIRouter, HTTPException, Query
 from utils.fetch_data import fetch_stock_data
@@ -8,7 +8,6 @@ from utils.calculate import calculate_future_value
 
 router = APIRouter()
 
-# --- START: ADDED/RESTORED CODE ---
 @router.get("/search")
 async def search_symbols(query: str = Query(..., min_length=1, description="Search query for stock symbols")):
     """
@@ -56,7 +55,6 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
         # Handle any other unexpected errors during processing
         print(f"Error processing search results: {e}")
         raise HTTPException(status_code=500, detail="Error processing search results.")
-# --- END: ADDED/RESTORED CODE ---
 
 
 @router.get("/price")
@@ -83,6 +81,11 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
             "dividend_yield": data.get("dividend_yield"),
             "week_52_high": data.get("week_52_high"),
             "week_52_low": data.get("week_52_low"),
+            # --- START: ADDED CODE ---
+            "recommendation": data.get("recommendation"),
+            "number_of_analysts": data.get("number_of_analysts"),
+            "target_price": data.get("target_price"),
+            # --- END: ADDED CODE ---
         }
 
         if not all([stock_data["open"], stock_data["high"], stock_data["low"], stock_data["close"]]):
