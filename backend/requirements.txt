@@ -16,3 +16,7 @@ requests
 newsdataapi
 transformers
 torch
+
+# === Frontend Dependencies (install via npm) ===
+# Run inside /frontend:
+# npm install @chakra-ui/react @emotion/react @emotion/styled framer-motion

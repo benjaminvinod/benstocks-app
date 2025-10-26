@@ -1,11 +1,9 @@
-# config.py
 import os
 from dotenv import load_dotenv
 
 load_dotenv() 
 
-# MongoDB connection string (Atlas)
-MONGO_URI = "mongodb+srv://benji:apple%402003@benstocks-cluster.rkvl00b.mongodb.net/?retryWrites=true&w=majority&appName=benstocks-cluster"
+MONGO_URI = os.getenv("MONGO_URI")
 
 # Name of the database to use
 DB_NAME = "benstocks_db"

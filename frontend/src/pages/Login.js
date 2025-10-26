@@ -1,6 +1,25 @@
+// src/pages/Login.js
+
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+
+// --- START: CORRECTED CODE ---
+// For Chakra UI v1, these components are all available in the main package.
+import {
+  Box,
+  Heading,
+  Text,
+  FormControl,
+  FormLabel,
+  Input,
+  Button,
+  VStack,
+  Alert,
+  AlertIcon,
+  Link,
+} from '@chakra-ui/react';
+// --- END: CORRECTED CODE ---
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -18,52 +37,62 @@ function Login() {
 
     try {
       await login(email, password);
-      navigate('/dashboard'); // Redirect to dashboard on success
+      navigate('/dashboard');
     } catch (err) {
-      // Get the error message from the AuthContext
       setError(err.message || 'Failed to log in. Please check your credentials.');
     }
     setLoading(false);
   };
 
   return (
-    <div className="container" style={{ maxWidth: '500px', marginTop: '5rem' }}>
-      <h1 style={{ textAlign: 'center' }}>Log In</h1>
-      <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-        Welcome back to BenStocks!
-      </p>
-
-      {error && <p style={{ color: 'var(--danger)', textAlign: 'center' }}>{error}</p>}
-
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input
+    <Box maxW="500px" mx="auto" mt="5rem" p={8} bg="var(--bg-dark-secondary)" borderRadius="lg" borderWidth="1px" borderColor="var(--border-color)">
+      <VStack as="form" spacing={6} onSubmit={handleSubmit}>
+        <VStack spacing={2} w="full">
+          <Heading as="h1">Log In</Heading>
+          <Text color="var(--text-secondary)">
+            Welcome back to BenStocks!
+          </Text>
+        </VStack>
+        
+        {error && (
+          <Alert status="error" borderRadius="md">
+            <AlertIcon />
+            {error}
+          </Alert>
+        )}
+        
+        <FormControl isRequired>
+          <FormLabel>Email</FormLabel>
+          <Input
             type="email"
-            id="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
+            placeholder="you@example.com"
           />
-        </div>
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <input
+        </FormControl>
+
+        <FormControl isRequired>
+          <FormLabel>Password</FormLabel>
+          <Input
             type="password"
-            id="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
+            placeholder="••••••••"
           />
-        </div>
-        <button type="submit" disabled={loading} style={{ width: '100%' }}>
-          {loading ? 'Logging in...' : 'Log In'}
-        </button>
-      </form>
-      <p style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--text-secondary)' }}>
-        Don't have an account? <Link to="/signup">Sign Up</Link>
-      </p>
-    </div>
+        </FormControl>
+
+        <Button type="submit" width="full" isLoading={loading}>
+          Log In
+        </Button>
+
+        <Text color="var(--text-secondary)">
+          Don't have an account?{' '}
+          <Link as={RouterLink} to="/signup">
+            Sign Up
+          </Link>
+        </Text>
+      </VStack>
+    </Box>
   );
 }
 

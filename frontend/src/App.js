@@ -1,9 +1,16 @@
+// src/App.js
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
+// --- START: ADDED CODE ---
+import { ChakraProvider } from '@chakra-ui/react';
+import theme from './theme'; // Import our custom theme
+// --- END: ADDED CODE ---
 
 // Page Imports
 import Disclaimer from './pages/Disclaimer';
@@ -12,8 +19,8 @@ import Dashboard from './pages/Dashboard';
 import StockDetails from './pages/StockDetails';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import ETFs from './pages/ETFs';
 import MutualFunds from './pages/MutualFunds';
-import ETFs from './pages/ETFs'; // Import the ETFs page
 import Transactions from './pages/Transactions';
 import Leaderboard from './pages/Leaderboard';
 import TermsOfService from './pages/TermsOfService';
@@ -26,13 +33,18 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
-    <AuthProvider>
-      <WebSocketProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </WebSocketProvider>
-    </AuthProvider>
+    // --- START: MODIFIED CODE ---
+    // Wrap the entire application with ChakraProvider and pass our theme
+    <ChakraProvider theme={theme}>
+      <AuthProvider>
+        <WebSocketProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </WebSocketProvider>
+      </AuthProvider>
+    </ChakraProvider>
+    // --- END: MODIFIED CODE ---
   );
 }
 
@@ -43,19 +55,12 @@ function AppContent() {
       <ToastContainer
         position="bottom-right"
         autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
         theme="dark"
       />
       <Header />
       <main style={{ flex: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>
         <Routes>
-          {/* Public Routes */}
+          {/* All your routes remain the same */}
           <Route path="/" element={<Navigate to="/disclaimer" />} />
           <Route path="/disclaimer" element={<Disclaimer />} />
           <Route path="/learn" element={<Learn />} />
@@ -64,21 +69,13 @@ function AppContent() {
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
-
-          {/* Protected Routes (Require Login) */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/stock/:symbol" element={<StockDetails />} />
-            {/* --- START: MODIFIED CODE --- */}
-            {/* The old /mutual-funds path now points to the new page */}
-            <Route path="/mutual-funds" element={<MutualFunds />} />
-            {/* A new path for ETFs is added */}
             <Route path="/etfs" element={<ETFs />} />
-            {/* --- END: MODIFIED CODE --- */}
+            <Route path="/mutual-funds" element={<MutualFunds />} />
             <Route path="/transactions" element={<Transactions />} />
           </Route>
-
-          {/* Fallback for unknown routes */}
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </main>
