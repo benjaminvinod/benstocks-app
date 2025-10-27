@@ -46,9 +46,8 @@ function Header() {
             <Link to="/dashboard" style={navLinkStyle}>Dashboard</Link>
             <Link to="/etfs" style={navLinkStyle}>ETFs</Link>
             <Link to="/mutual-funds" style={navLinkStyle}>Mutual Funds</Link>
-            {/* --- START: ADDED CODE --- */}
             <Link to="/risk-profile" style={navLinkStyle}>Risk Profiling Quiz</Link>
-            {/* --- END: ADDED CODE --- */}
+            <Link to="/tax-optimizer" style={navLinkStyle}>Tax Optimizer</Link> {/* --- START: ADDED CODE --- */}
             <Link to="/transactions" style={navLinkStyle}>Transactions</Link>
             <Link to="/learn" style={navLinkStyle}>Learn</Link>
             <Link to="/leaderboard" style={navLinkStyle}>Leaderboard</Link>

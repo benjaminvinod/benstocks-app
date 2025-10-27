@@ -2,7 +2,7 @@
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, portfolio, stocks, info, leaderboard, admin, news
+from routes import auth, portfolio, stocks, info, leaderboard, admin, news, mutual_funds
 from websocket_manager import manager, price_updater_task
 
 app = FastAPI(
@@ -33,11 +33,7 @@ app.include_router(info.router, prefix="/info", tags=["Info"])
 app.include_router(leaderboard.router, prefix="/leaderboard", tags=["Leaderboard"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(news.router, prefix="/news", tags=["News"])
-
-# --- START: MODIFIED CODE ---
-# The line below, which was causing the error, has now been deleted.
-# app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
-# --- END: MODIFIED CODE ---
+app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
 
 
 @app.websocket("/ws")
@@ -45,7 +41,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep the connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)

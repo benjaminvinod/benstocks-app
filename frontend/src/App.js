@@ -23,7 +23,8 @@ import Transactions from './pages/Transactions';
 import Leaderboard from './pages/Leaderboard';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import RiskProfile from './pages/RiskProfile'; // --- START: ADDED CODE ---
+import RiskProfile from './pages/RiskProfile';
+import TaxOptimizer from './pages/TaxOptimizer'; // --- START: ADDED CODE ---
 
 // Component Imports
 import Header from './components/Header';
@@ -70,7 +71,8 @@ function AppContent() {
             <Route path="/etfs" element={<ETFs />} />
             <Route path="/mutual-funds" element={<MutualFunds />} />
             <Route path="/transactions" element={<Transactions />} />
-            <Route path="/risk-profile" element={<RiskProfile />} /> {/* --- START: ADDED CODE --- */}
+            <Route path="/risk-profile" element={<RiskProfile />} />
+            <Route path="/tax-optimizer" element={<TaxOptimizer />} /> {/* --- START: ADDED CODE --- */}
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
