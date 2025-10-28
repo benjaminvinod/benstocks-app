@@ -1,6 +1,6 @@
 import pandas as pd
 import yfinance as yf
-import requests 
+import requests
 
 from fastapi import APIRouter, HTTPException, Query
 from utils.fetch_data import fetch_stock_data
@@ -59,7 +59,6 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
         if data.get("error"):
             raise HTTPException(status_code=404, detail=data["error"])
 
-        # Construct the response dictionary, safely getting values
         stock_data = {
             "symbol": data.get("symbol"),
             "name": data.get("name"),
@@ -80,32 +79,24 @@ async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
             "sharpe_ratio": data.get("sharpe_ratio"),
             "esg_score": data.get("esg_score"),
             "esg_percentile": data.get("esg_percentile"),
-            # --- START: ADDED FINANCIAL METRICS TO ENDPOINT ---
+            # --- START: ADDED FINANCIAL METRICS ---
             "revenue": data.get("revenue"),
             "net_income": data.get("net_income"),
             "total_debt": data.get("total_debt"),
             "free_cash_flow": data.get("free_cash_flow"),
-            # --- END: ADDED FINANCIAL METRICS TO ENDPOINT ---
+            # --- END: ADDED FINANCIAL METRICS ---
         }
 
-        # Check if essential price data is missing
         if not all(k in stock_data and stock_data[k] is not None for k in ["open", "high", "low", "close"]):
-             # Log the incomplete data for debugging
-             print(f"Warning: Incomplete price data received for {symbol}: {stock_data}")
-             # Optionally, still return the data we have, or raise an error
-             # raise HTTPException(status_code=502, detail="Incomplete price data from financial API.")
+             print(f"Warning: Incomplete price data for {symbol}")
 
-
-        # Return all data, allowing frontend to handle potential nulls for non-essential fields
         return stock_data
 
     except HTTPException as http_e:
-        # Re-raise HTTPExceptions directly (like 404 Not Found)
         raise http_e
     except Exception as e:
-        # Catch any other unexpected errors during processing
-        print(f"Error processing stock price request for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred while processing the request.")
+        print(f"Error in get_stock_price for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred.")
 
 @router.get("/projection")
 async def projection(
@@ -159,37 +150,23 @@ async def get_stock_history(symbol: str, period: str = "1y"):
         if 'Date' not in hist.columns:
              raise HTTPException(status_code=500, detail="Historical data missing 'Date' column.")
         try:
-            # Ensure the Date column exists and is datetime-like before conversion
-            if pd.api.types.is_datetime64_any_dtype(hist['Date']):
-                 hist['Date'] = hist['Date'].dt.tz_localize(None) # Remove timezone if present
-            else:
-                 # Attempt conversion if not already datetime
-                 hist['Date'] = pd.to_datetime(hist['Date']).dt.tz_localize(None)
-
+            hist['Date'] = pd.to_datetime(hist['Date']).dt.tz_localize(None)
             hist['Date'] = hist['Date'].apply(lambda x: x.isoformat() + "Z")
         except Exception as date_err:
-             print(f"Error converting Date column for {symbol}: {date_err}")
-             # Decide how to handle: raise error, return partial data, or skip date conversion
+             print(f"Error converting Date column: {date_err}")
              raise HTTPException(status_code=500, detail="Error processing date format in historical data.")
-
 
         if 'Close' not in hist.columns:
              raise HTTPException(status_code=500, detail="Historical data missing 'Close' column.")
 
-        # Ensure 'Close' is numeric, coercing errors to NaN
-        hist['Close'] = pd.to_numeric(hist['Close'], errors='coerce')
-
         hist_filtered = hist[['Date', 'Close']].copy()
-        hist_filtered.dropna(subset=['Close'], inplace=True) # Drop rows where Close is NaN
+        hist_filtered.dropna(subset=['Close'], inplace=True)
         records = hist_filtered.to_dict("records")
         print(f"Successfully fetched {len(records)} history records for {symbol} ({period})")
         return records
 
     except HTTPException as http_exc:
-        # Re-raise specific HTTP errors
-        print(f"HTTP Exception fetching history for {symbol}: {http_exc.detail}")
         raise http_exc
     except Exception as e:
-        # Catch other unexpected errors
         print(f"Unexpected error fetching history for {symbol} ({period}): {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve historical data due to an unexpected server error.")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve historical data: An unexpected error occurred.")

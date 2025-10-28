@@ -11,7 +11,7 @@ import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 import { useWebSocket } from '../context/WebSocketContext';
 import Tooltip from '../components/Tooltip';
 
-// Reusable Stat Component (Used by multiple sections)
+// Reusable Stat Component
 const Stat = ({ label, value, tooltipText }) => (
     <div style={{ flex: '1 1 150px', background: 'var(--bg-dark-primary)', padding: '1rem', borderRadius: '8px', minWidth: '150px' }}>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
@@ -30,20 +30,13 @@ const Stat = ({ label, value, tooltipText }) => (
 
 // Analyst Rating Component
 const AnalystRating = ({ stockData }) => {
-    if (!stockData || stockData.recommendation === null || typeof stockData.recommendation === 'undefined') {
-        return null;
-    }
-
-    const recommendation = stockData.recommendation || 'N/A';
-    const numAnalysts = stockData.number_of_analysts || 0;
-    const targetPrice = stockData.target_price;
-
-    if (recommendation === 'N/A' && numAnalysts === 0) {
+    const { recommendation, number_of_analysts, target_price, currency } = stockData;
+    if (!recommendation && !number_of_analysts) {
         return null;
     }
 
     const getRatingColor = (rec) => {
-        if (!rec || typeof rec !== 'string') return 'var(--text-primary)';
+        if (!rec) return 'var(--text-primary)';
         const lowerRec = rec.toLowerCase();
         if (lowerRec.includes('buy') || lowerRec.includes('outperform')) return '#48BB78';
         if (lowerRec.includes('hold') || lowerRec.includes('neutral') || lowerRec.includes('perform')) return '#A0AEC0';
@@ -51,59 +44,37 @@ const AnalystRating = ({ stockData }) => {
         return 'var(--text-primary)';
     };
 
-    const ratingText = recommendation.replace(/_/g, ' ').toUpperCase();
+    const ratingText = recommendation ? recommendation.replace(/_/g, ' ').toUpperCase() : 'N/A';
     const color = getRatingColor(ratingText);
 
     return (
         <div style={{ marginTop: '2rem' }}>
             <h2>Analyst Consensus</h2>
             <div style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '1.5rem' }}>
-                <div>
-                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Overall Rating</p>
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold', color: color }}>
-                        {ratingText}
-                    </p>
-                </div>
-                {numAnalysts > 0 && (
+                {recommendation && (
+                    <div>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Overall Rating</p>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold', color }}>
+                            {ratingText}
+                        </p>
+                    </div>
+                )}
+                {number_of_analysts > 0 && (
                     <div>
                         <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Number of Analysts</p>
                         <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                            {numAnalysts}
+                            {number_of_analysts}
                         </p>
                     </div>
                 )}
-                {(targetPrice !== null && typeof targetPrice !== 'undefined') && (
+                {target_price && (
                     <div>
                         <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Average Target Price</p>
                         <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                            {formatCurrency(targetPrice, stockData.currency)}
+                            {formatCurrency(target_price, currency)}
                         </p>
                     </div>
                 )}
-            </div>
-        </div>
-    );
-};
-
-// Advanced Analytics Component
-const AdvancedAnalytics = ({ stockData }) => {
-    const hasData = (stockData.beta !== null && typeof stockData.beta !== 'undefined') ||
-                  (stockData.sharpe_ratio !== null && typeof stockData.sharpe_ratio !== 'undefined') ||
-                  (stockData.esg_score !== null && typeof stockData.esg_score !== 'undefined');
-    if (!hasData) return null;
-
-    return (
-        <div style={{ marginTop: '2rem' }}>
-            <h2>Advanced Analytics</h2>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {stockData.beta !== null && <Stat label="Beta" value={stockData.beta.toFixed(2)} tooltipText="Measures the stock's volatility relative to the overall market. >1 is more volatile, <1 is less volatile." />}
-                {stockData.sharpe_ratio !== null && <Stat label="Sharpe Ratio (proxy)" value={stockData.sharpe_ratio.toFixed(2)} tooltipText="Measures risk-adjusted return (using expense ratio as proxy). Higher suggests better risk-adjusted performance." />}
-                {stockData.esg_score !== null && (
-                     <>
-                        <Stat label="ESG Score" value={stockData.esg_score.toFixed(2)} tooltipText="Environmental, Social, and Governance risk score. Lower is generally better (less risk)." />
-                        <Stat label="ESG Percentile" value={stockData.esg_percentile !== null ? `${stockData.esg_percentile.toFixed(2)}%` : 'N/A'} tooltipText="The company's ESG risk percentile compared to global companies. Lower is better." />
-                     </>
-                 )}
             </div>
         </div>
     );
@@ -111,20 +82,18 @@ const AdvancedAnalytics = ({ stockData }) => {
 
 // Financials Snapshot Component
 const FinancialsSnapshot = ({ stockData }) => {
-    const hasData = (stockData.revenue !== null && typeof stockData.revenue !== 'undefined') ||
-                  (stockData.net_income !== null && typeof stockData.net_income !== 'undefined') ||
-                  (stockData.total_debt !== null && typeof stockData.total_debt !== 'undefined') ||
-                  (stockData.free_cash_flow !== null && typeof stockData.free_cash_flow !== 'undefined');
+    const { revenue, net_income, total_debt, free_cash_flow } = stockData;
+    const hasData = [revenue, net_income, total_debt, free_cash_flow].some(val => val !== null && typeof val !== 'undefined');
     if (!hasData) return null;
 
     return (
         <div style={{ marginTop: '2rem' }}>
             <h2>Financial Snapshot (Annual)</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {stockData.revenue !== null && <Stat label="Total Revenue" value={formatLargeNumber(stockData.revenue)} tooltipText="The total amount of money a company generated from its sales (last fiscal year)." />}
-                {stockData.net_income !== null && <Stat label="Net Income (Profit)" value={formatLargeNumber(stockData.net_income)} tooltipText="The company's profit after all expenses (last fiscal year)." />}
-                {stockData.total_debt !== null && <Stat label="Total Debt" value={formatLargeNumber(stockData.total_debt)} tooltipText="The total amount of money the company owes (last reported)." />}
-                {stockData.free_cash_flow !== null && <Stat label="Free Cash Flow" value={formatLargeNumber(stockData.free_cash_flow)} tooltipText="Cash generated after paying for operations and investments (last fiscal year)." />}
+                {revenue !== null && <Stat label="Total Revenue" value={formatLargeNumber(revenue)} tooltipText="Total sales from goods and services (last fiscal year)." />}
+                {net_income !== null && <Stat label="Net Income" value={formatLargeNumber(net_income)} tooltipText="Company's profit after all expenses (last fiscal year)." />}
+                {total_debt !== null && <Stat label="Total Debt" value={formatLargeNumber(total_debt)} tooltipText="Total money the company owes (last reported)." />}
+                {free_cash_flow !== null && <Stat label="Free Cash Flow" value={formatLargeNumber(free_cash_flow)} tooltipText="Cash left after paying for operations and investments." />}
             </div>
         </div>
     );
@@ -246,22 +215,15 @@ function StockDetails() {
     const estimatedCost = Number(quantity) * (stockData?.close || 0);
 
     if (isLoading) {
-        return <div className="container"><p>Loading stock data for {symbol}...</p></div>;
+        return <div className="container"><p>Loading data for {symbol}...</p></div>;
     }
 
     if (error) {
-        return (
-            <div className="container">
-                <BackButton />
-                <p style={{ color: "var(--danger)", textAlign: 'center', marginTop: '2rem' }}>
-                    Error: {error}
-                </p>
-            </div>
-        );
+        return <div className="container"><BackButton /><p style={{ color: "var(--danger)", textAlign: 'center' }}>Error: {error}</p></div>;
     }
 
     if (!stockData) {
-        return <div className="container"><p>No data available for this stock.</p></div>
+        return <div className="container"><BackButton /><p>No data available for this stock.</p></div>
     }
 
     return (
@@ -273,11 +235,7 @@ function StockDetails() {
                     <p style={{ fontSize: '2rem', color: 'var(--text-primary)', fontWeight: 'bold', margin: 0 }}>
                         {formatCurrency(stockData.close, currencyCode)}
                     </p>
-                    {isDividendStock && (
-                        <p style={{ margin: '0.25rem 0 0 0', color: 'var(--brand-primary)', fontWeight: 'bold' }}>
-                            💵 This stock may pay dividends.
-                        </p>
-                    )}
+                    {isDividendStock && <p style={{ margin: '0.25rem 0 0 0', color: 'var(--brand-primary)', fontWeight: 'bold' }}>💵 This stock may pay dividends.</p>}
                 </div>
                 <button
                     onClick={handleWatchlistToggle}
@@ -297,7 +255,7 @@ function StockDetails() {
                     {watchlistLoading ? '...' : (isWatchlisted ? '★ Following' : '☆ Add to Watchlist')}
                 </button>
             </div>
-
+            
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem', marginBottom: '2rem' }}>
                 <p><span style={{color: 'var(--text-secondary)'}}>Open:</span> {formatCurrency(stockData.open, currencyCode)}</p>
                 <p><span style={{color: 'var(--text-secondary)'}}>High:</span> {formatCurrency(stockData.high, currencyCode)}</p>
@@ -315,7 +273,6 @@ function StockDetails() {
             
             <FinancialsSnapshot stockData={stockData} />
             <AnalystRating stockData={stockData} />
-            <AdvancedAnalytics stockData={stockData} />
             <StockChart symbol={symbol} currency={currencyCode} />
 
             <div style={formContainerStyle}>
@@ -323,16 +280,7 @@ function StockDetails() {
                 <form onSubmit={handleBuyStock}>
                     <div className="form-group">
                         <label htmlFor="quantity">Quantity</label>
-                        <input
-                            id="quantity"
-                            type="number"
-                            value={quantity}
-                            onChange={(e) => setQuantity(e.target.value)}
-                            min="1"
-                            step="1"
-                            required
-                            style={{ maxWidth: '150px' }}
-                        />
+                        <input id="quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" step="1" required style={{ maxWidth: '150px' }} />
                     </div>
                     <div style={{ color: 'var(--text-primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
                         Estimated Cost: {formatCurrency(estimatedCost, currencyCode)}

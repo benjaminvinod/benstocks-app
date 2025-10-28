@@ -149,13 +149,31 @@ async def get_live_portfolio_value(user_id: str):
         tickers = yf.Tickers(tickers_str)
         for symbol in symbols_to_fetch:
             try:
-                info = tickers.tickers[symbol.upper()].info
+                # --- START: MODIFIED CODE (More Robust Bulk Fetching) ---
+                # 1. Safely get the ticker object from the bulk download
+                ticker_obj = tickers.tickers.get(symbol.upper())
+                if not ticker_obj:
+                    print(f"Portfolio Value: Ticker object for {symbol} not found.")
+                    continue
+
+                # 2. Safely get the info dictionary
+                info = ticker_obj.info
+                if not info or info.get('marketCap') is None and info.get('regularMarketPrice') is None:
+                    print(f"Portfolio Value: Incomplete info for {symbol}. Skipping.")
+                    continue
+                
+                # 3. Safely get the price
                 price = info.get("currentPrice") or info.get("regularMarketPrice")
                 currency = info.get("currency", "USD")
-                if price:
+
+                if price and currency:
                     live_prices_data[symbol] = {"price": price, "currency": currency}
-            except Exception:
-                print(f"Could not fetch bulk info for {symbol}")
+                else:
+                    print(f"Portfolio Value: Price or currency missing for {symbol}.")
+                # --- END: MODIFIED CODE ---
+
+            except Exception as e:
+                print(f"Could not fetch bulk info for {symbol}: {e}")
 
     total_investment_value_inr = 0.0
     investment_details = {}
@@ -163,35 +181,43 @@ async def get_live_portfolio_value(user_id: str):
 
     for investment in portfolio.investments:
         value_inr = 0
+        buy_cost_fallback = investment.buy_cost_inr or 0
+
         if investment.symbol in SIMULATED_MF_IDS:
             live_nav = get_simulated_nav(investment.symbol)
-            if live_nav:
-                value_inr = investment.quantity * live_nav
-            else:
-                value_inr = investment.buy_cost_inr or 0
+            value_inr = (investment.quantity * live_nav) if live_nav else buy_cost_fallback
         else:
             live_data = live_prices_data.get(investment.symbol)
             if not live_data:
                 fetch_errors.append(f"Could not fetch price for {investment.symbol}")
-                value_inr = investment.buy_cost_inr or 0
+                value_inr = buy_cost_fallback
             else:
                 live_price = live_data["price"]
                 stock_currency = live_data["currency"]
                 value_original_currency = investment.quantity * live_price
                 value_inr = value_original_currency
+
                 if stock_currency != "INR":
                     rate = get_exchange_rate(stock_currency, "INR")
-                    if rate: value_inr = value_original_currency * rate
+                    if rate:
+                        value_inr = value_original_currency * rate
                     else:
                         fetch_errors.append(f"Could not get rate for {investment.symbol}")
-                        value_inr = investment.buy_cost_inr or 0
+                        value_inr = buy_cost_fallback
 
         total_investment_value_inr += value_inr
         investment_details[investment.id] = {"live_value_inr": round(value_inr, 2)}
 
     total_portfolio_value_inr = user_doc["balance"] + total_investment_value_inr
 
-    return {"user_id": user_id, "cash_balance_inr": user_doc["balance"], "total_investment_value_inr": round(total_investment_value_inr, 2), "total_portfolio_value_inr": round(total_portfolio_value_inr, 2), "investment_details": investment_details, "errors": fetch_errors}
+    return {
+        "user_id": user_id,
+        "cash_balance_inr": user_doc["balance"],
+        "total_investment_value_inr": round(total_investment_value_inr, 2),
+        "total_portfolio_value_inr": round(total_portfolio_value_inr, 2),
+        "investment_details": investment_details,
+        "errors": fetch_errors
+    }
 
 @router.get("/watchlist/{user_id}")
 async def get_watchlist(user_id: str):
