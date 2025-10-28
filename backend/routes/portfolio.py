@@ -67,36 +67,51 @@ async def buy_investment(user_id: str, investment: Investment):
 
 @router.post("/sell/{user_id}")
 async def sell_investment(user_id: str, sell_request: SellRequest):
-    if not ObjectId.is_valid(user_id): raise HTTPException(status_code=400, detail="Invalid user ID format")
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if not user_doc: raise HTTPException(status_code=404, detail="User not found")
-    
-    portfolio_doc = await portfolio_collection.find_one(
-        {"user_id": user_id, "investments.id": sell_request.investment_id},
-        projection={"investments.$": 1}
-    )
-    if not portfolio_doc or not portfolio_doc.get("investments"):
-        raise HTTPException(status_code=404, detail="Investment not found in portfolio")
-    
-    investment_to_sell = Investment(**portfolio_doc["investments"][0])
-    qty_to_sell = sell_request.quantity_to_sell
-    if qty_to_sell <= 1e-9 or qty_to_sell > investment_to_sell.quantity + 1e-9:
-        raise HTTPException(status_code=400, detail="Invalid quantity to sell")
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    if investment_to_sell.symbol in SIMULATED_MF_IDS:
-        live_price = get_simulated_nav(investment_to_sell.symbol)
+    portfolio = await get_portfolio(user_id)
+    if not portfolio.investments:
+        raise HTTPException(status_code=404, detail="Portfolio is empty.")
+
+    symbol_to_sell = sell_request.investment_id.upper() # Re-using the field to pass the SYMBOL
+    qty_to_sell = sell_request.quantity_to_sell
+
+    # Find all holdings for the specific symbol, sorted by purchase date (FIFO)
+    holdings_for_symbol = sorted(
+        [inv for inv in portfolio.investments if inv.symbol.upper() == symbol_to_sell],
+        key=lambda x: x.buy_date
+    )
+
+    if not holdings_for_symbol:
+        raise HTTPException(status_code=404, detail=f"Investment with symbol {symbol_to_sell} not found in portfolio.")
+
+    total_owned_quantity = sum(h.quantity for h in holdings_for_symbol)
+
+    # Validate against the total owned quantity
+    if qty_to_sell <= 1e-9 or qty_to_sell > total_owned_quantity + 1e-9:
+        raise HTTPException(status_code=400, detail=f"Invalid quantity to sell. You own {total_owned_quantity:.4f} shares.")
+
+    # Fetch live price for the symbol
+    if symbol_to_sell in SIMULATED_MF_IDS:
+        live_price = get_simulated_nav(symbol_to_sell)
         if not live_price:
             raise HTTPException(status_code=500, detail="Could not fetch simulated price for mutual fund.")
         stock_currency = "INR"
     else:
         try:
-            live_data = fetch_stock_data(investment_to_sell.symbol)
+            live_data = fetch_stock_data(symbol_to_sell)
             if live_data.get("error"): raise ValueError(live_data.get("error"))
             live_price = live_data.get("close")
             stock_currency = live_data.get("currency", "USD")
             if live_price is None or live_price <= 0: raise ValueError("Live price is invalid or zero.")
-        except Exception as e: raise HTTPException(status_code=500, detail=f"Could not fetch live price for {investment_to_sell.symbol}: {e}")
-        
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not fetch live price for {symbol_to_sell}: {e}")
+
+    # Calculate total sale value in INR
     total_sale_value_original = qty_to_sell * live_price
     sale_value_inr = total_sale_value_original
     rate = 1.0
@@ -104,21 +119,37 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
         rate = get_exchange_rate(stock_currency, "INR")
         if rate is None: raise HTTPException(status_code=500, detail="Could not get exchange rate")
         sale_value_inr = total_sale_value_original * rate
-        
-    remaining_quantity = investment_to_sell.quantity - qty_to_sell
-    if remaining_quantity < 1e-9:
-        update_result = await portfolio_collection.update_one({"user_id": user_id}, {"$pull": {"investments": {"id": sell_request.investment_id}}})
-    else:
-        update_result = await portfolio_collection.update_one({"user_id": user_id, "investments.id": sell_request.investment_id}, {"$set": {"investments.$.quantity": remaining_quantity}})
-        
-    if update_result.modified_count == 0: raise HTTPException(status_code=500, detail="Failed to update portfolio in database.")
+
+    # FIFO logic: Deduct shares from the oldest holdings first
+    remaining_qty_to_sell = qty_to_sell
+    updated_investments = [inv for inv in portfolio.investments if inv.symbol.upper() != symbol_to_sell] # Start with other stocks
     
+    for holding in holdings_for_symbol:
+        if remaining_qty_to_sell <= 0:
+            updated_investments.append(holding)
+            continue
+        
+        if holding.quantity > remaining_qty_to_sell:
+            holding.quantity -= remaining_qty_to_sell
+            remaining_qty_to_sell = 0
+            updated_investments.append(holding)
+        else:
+            remaining_qty_to_sell -= holding.quantity
+
+    # Update the entire investments array in the database
+    await portfolio_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"investments": [inv.dict() for inv in updated_investments]}}
+    )
+
+    # Update user balance and log transaction
     await users_collection.update_one({"_id": ObjectId(user_id)}, {"$inc": {"balance": sale_value_inr}})
     
     try:
-        transaction = Transaction(user_id=user_id, symbol=investment_to_sell.symbol, type="SELL", quantity=qty_to_sell, price_per_unit=live_price, price_per_unit_inr=live_price * rate, total_value_inr=sale_value_inr)
+        transaction = Transaction(user_id=user_id, symbol=symbol_to_sell, type="SELL", quantity=qty_to_sell, price_per_unit=live_price, price_per_unit_inr=live_price * rate, total_value_inr=sale_value_inr)
         await transactions_collection.insert_one(transaction.dict())
-    except Exception as log_e: print(f"Warning: Failed to log sell transaction: {log_e}")
+    except Exception as log_e:
+        print(f"Warning: Failed to log sell transaction: {log_e}")
     
     return {"message": "Investment sold successfully"}
 

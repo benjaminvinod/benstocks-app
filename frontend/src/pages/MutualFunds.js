@@ -1,31 +1,60 @@
 // src/pages/MutualFunds.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { buyInvestment } from '../api/portfolio';
 import { formatCurrency } from '../utils/format';
 import BackButton from '../components/BackButton';
 import { toast } from 'react-toastify';
+import {
+  Box, Container, Heading, Text, SimpleGrid, Select, Input, Button,
+  FormControl, FormLabel, Spinner, Flex
+} from '@chakra-ui/react';
 
 const BASE_URL = "http://localhost:8000";
 
+const FundCard = ({ fund }) => (
+  <Box
+    bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
+    p={5}
+    borderRadius="lg"
+    borderWidth="1px"
+    borderColor="var(--border-dynamic, var(--border-color))"
+    boxShadow="md"
+  >
+    <Heading size="sm" color="var(--brand-primary-dynamic, var(--brand-primary))">{fund.name}</Heading>
+    <Text fontSize="sm" color="var(--text-secondary-dynamic, var(--text-secondary))" mt={1}>
+      Category: {fund.category}
+    </Text>
+    <Text mt={3}>
+      <Text as="span" color="var(--text-secondary-dynamic, var(--text-secondary))">Base NAV: </Text>
+      <Text as="span" fontWeight="bold">{formatCurrency(fund.baseNav, 'INR')}</Text>
+    </Text>
+  </Box>
+);
+
 function MutualFunds() {
     const { user, refreshUser } = useAuth();
-    const [popularMutualFunds, setPopularMutualFunds] = useState([]);
+    const [allFunds, setAllFunds] = useState([]);
     const [selectedFundId, setSelectedFundId] = useState('');
     const [amount, setAmount] = useState(5000);
     const [loading, setLoading] = useState(false);
     const [pageLoading, setPageLoading] = useState(true);
     const [currentNav, setCurrentNav] = useState(null);
+    const [filterCategory, setFilterCategory] = useState('All Funds');
 
-    // Fetch the list of funds when the page loads
+    const fundCategories = [
+        'All Funds', 'Index Funds', 'Midcap Funds', 'Smallcap Funds',
+        'Flexicap Funds', 'ELSS Funds', 'Contra & Value Funds'
+    ];
+
     useEffect(() => {
         const fetchFunds = async () => {
             try {
                 const response = await axios.get(`${BASE_URL}/mutual-funds`);
-                setPopularMutualFunds(response.data);
+                setAllFunds(response.data);
                 if (response.data.length > 0) {
-                    setSelectedFundId(response.data[0].id); // Set the first fund as default
+                    setSelectedFundId(response.data[0].id);
                 }
             } catch (error) {
                 toast.error("Could not load list of mutual funds.");
@@ -35,11 +64,28 @@ function MutualFunds() {
         fetchFunds();
     }, []);
 
-    // Fetch the simulated NAV when the selected fund changes
+    const filteredFunds = useMemo(() => {
+        if (filterCategory === 'All Funds') {
+            return allFunds;
+        }
+        return allFunds.filter(fund => fund.category === filterCategory);
+    }, [allFunds, filterCategory]);
+
     useEffect(() => {
-        if (!selectedFundId) return;
+        if (filteredFunds.length > 0 && !filteredFunds.find(f => f.id === selectedFundId)) {
+            setSelectedFundId(filteredFunds[0].id);
+        } else if (filteredFunds.length === 0) {
+            setSelectedFundId('');
+        }
+    }, [filteredFunds, selectedFundId]);
+
+    useEffect(() => {
+        if (!selectedFundId) {
+            setCurrentNav(null);
+            return;
+        }
         const fetchNav = async () => {
-            setCurrentNav(null); // Reset while fetching
+            setCurrentNav(null);
             try {
                 const response = await axios.get(`${BASE_URL}/mutual-funds/nav/${selectedFundId}`);
                 setCurrentNav(response.data.simulated_nav);
@@ -55,13 +101,11 @@ function MutualFunds() {
         setLoading(true);
         if (!currentNav || currentNav <= 0) {
             toast.error("NAV is not available. Please try again.");
-            setLoading(false);
-            return;
+            setLoading(false); return;
         }
         if (amount <= 0 || !user || amount > user.balance) {
             toast.error("Invalid amount or insufficient balance.");
-            setLoading(false);
-            return;
+            setLoading(false); return;
         }
         try {
             const quantity = amount / currentNav;
@@ -82,47 +126,57 @@ function MutualFunds() {
     };
 
     if (pageLoading) {
-        return <div className="container"><p>Loading Mutual Funds...</p></div>;
+        return <Container centerContent><Spinner size="xl" mt={20} /></Container>;
     }
     
     return (
-        <div className="container">
+        <Container maxW="container.xl" className="container">
             <BackButton />
-            <div className="page-header">
-                <h1>Invest in Mutual Funds (Simulated NAV)</h1>
-                <p>Mutual Fund prices (NAV) are simulated daily. This value remains consistent for the entire day.</p>
-            </div>
-            <form onSubmit={handleBuy} style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
-                <h3>New Mutual Fund Investment</h3>
-                <div className="form-group">
-                    <label htmlFor="fund">Choose a Mutual Fund</label>
-                    <select id="fund" value={selectedFundId} onChange={(e) => setSelectedFundId(e.target.value)}>
-                        {popularMutualFunds.map(fund => (<option key={fund.id} value={fund.id}>{fund.name}</option>))}
-                    </select>
-                </div>
-                <div className="form-group">
-                    <label htmlFor="nav-display">Today's Simulated NAV (Price per Unit)</label>
-                    <input type="text" id="nav-display" value={currentNav ? formatCurrency(currentNav, "INR") : "Calculating..."} disabled style={{ backgroundColor: 'var(--border-color)', cursor: 'not-allowed' }} />
-                </div>
-                <div className="form-group">
-                    <label htmlFor="amount">Amount to Invest (₹)</label>
-                    <input type="number" id="amount" value={amount} min="500" step="100" onChange={(e) => setAmount(Number(e.target.value))} />
-                </div>
-                <button type="submit" disabled={loading || !currentNav}>
-                    {loading ? 'Investing...' : 'Invest Now'}
-                </button>
-            </form>
+            <Box className="page-header">
+                <Heading as="h1">Invest in Mutual Funds (Direct Plans)</Heading>
+                <Text>Mutual Fund prices (NAV) are simulated daily and represent Direct Plan - Growth values.</Text>
+            </Box>
+            
+            <Box as="form" onSubmit={handleBuy} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" p={6} borderRadius="lg" mb={8} boxShadow="lg">
+                <Heading size="md" mb={4}>New Mutual Fund Investment</Heading>
+                <SimpleGrid columns={[1, null, 2]} spacing={4}>
+                    <FormControl>
+                        <FormLabel>Choose a Mutual Fund</FormLabel>
+                        <Select value={selectedFundId} onChange={(e) => setSelectedFundId(e.target.value)}>
+                            {filteredFunds.map(fund => (<option key={fund.id} value={fund.id} style={{backgroundColor: 'var(--bg-dark-secondary)'}}>{fund.name}</option>))}
+                        </Select>
+                    </FormControl>
+                    <FormControl>
+                        <FormLabel>Today's NAV</FormLabel>
+                        <Input value={currentNav ? formatCurrency(currentNav, "INR") : "Calculating..."} isReadOnly />
+                    </FormControl>
+                </SimpleGrid>
+                <FormControl mt={4}>
+                    <FormLabel>Amount to Invest (₹)</FormLabel>
+                    <Input type="number" value={amount} min="500" step="100" onChange={(e) => setAmount(Number(e.target.value))} />
+                </FormControl>
+                <Button type="submit" isLoading={loading} isDisabled={!currentNav} mt={6} width="full">
+                    Invest Now
+                </Button>
+            </Box>
 
-            <h2>Available Mutual Funds</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-                {popularMutualFunds.map(fund => (
-                    <div key={fund.id} style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                        <h3 style={{ color: 'var(--brand-primary)', margin: 0 }}>{fund.name}</h3>
-                        <p><span style={{ color: 'var(--text-primary)' }}>Base NAV:</span> {formatCurrency(fund.baseNav, 'INR')}</p>
-                    </div>
-                ))}
-            </div>
-        </div>
+            <Flex mb={6} align="center">
+                <Heading size="md" mr={4}>Available Mutual Funds</Heading>
+                <Select maxW="250px" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+                    {fundCategories.map(cat => (
+                        <option key={cat} value={cat} style={{backgroundColor: 'var(--bg-dark-secondary)'}}>{cat}</option>
+                    ))}
+                </Select>
+            </Flex>
+
+            <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
+                {filteredFunds.length > 0 ? (
+                    filteredFunds.map(fund => <FundCard key={fund.id} fund={fund} />)
+                ) : (
+                    <Text>No funds found in this category.</Text>
+                )}
+            </SimpleGrid>
+        </Container>
     );
 }
 

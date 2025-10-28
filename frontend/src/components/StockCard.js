@@ -4,12 +4,9 @@ import React, { useState } from 'react';
 import { formatCurrency, formatDate } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
 import { sellInvestment } from '../api/portfolio';
-import { toast } from 'react-toastify'; // Make sure toast is imported
+import { toast } from 'react-toastify';
 
-// --- START: MODIFIED CODE ---
-// The component now accepts `liveDetails` as a prop
 function StockCard({ investment, fetchPortfolio, liveDetails }) {
-// --- END: MODIFIED CODE ---
   const { user, refreshUser } = useAuth();
   
   const [showSell, setShowSell] = useState(false);
@@ -36,13 +33,13 @@ function StockCard({ investment, fetchPortfolio, liveDetails }) {
     }
 
     try {
-      await sellInvestment(user.id, investment.id, qty);
+      await sellInvestment(user.id, investment.symbol, qty);
       toast.success('Investment sold successfully!');
       
       await refreshUser(); 
       await fetchPortfolio(); 
       
-      setShowSell(false); // Close form on successful sell
+      setShowSell(false);
     } catch (err) {
       toast.error(err.detail || err.message || "Sell failed.");
     }

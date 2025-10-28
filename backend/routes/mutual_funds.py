@@ -7,11 +7,15 @@ router = APIRouter()
 @router.get("")
 async def get_all_mutual_funds():
     """
-    Returns the list of all available simulated mutual funds.
+    Returns the list of all available simulated mutual funds, including their category.
     """
-    # Format the data to be easily used by the frontend
     fund_list = [
-        {"id": fund_id, "name": details["name"], "baseNav": details["baseNav"]}
+        {
+            "id": fund_id,
+            "name": details["name"],
+            "baseNav": details["baseNav"],
+            "category": details.get("category", "Uncategorized") # Include the category
+        }
         for fund_id, details in SIMULATED_FUNDS_DATA.items()
     ]
     return fund_list

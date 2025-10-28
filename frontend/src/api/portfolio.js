@@ -36,11 +36,10 @@ export const buyInvestment = async (userId, investment) => {
   }
 };
 
-// --- NEW SELL FUNCTION ---
-export const sellInvestment = async (userId, investmentId, quantityToSell) => {
+export const sellInvestment = async (userId, symbol, quantityToSell) => {
   try {
     const response = await axios.post(`${BASE_URL}/portfolio/sell/${userId}`, {
-      investment_id: investmentId,
+      investment_id: symbol,
       quantity_to_sell: quantityToSell,
     });
     return response.data;

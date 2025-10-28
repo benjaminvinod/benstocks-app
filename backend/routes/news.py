@@ -14,26 +14,28 @@ api = NewsDataApiClient(apikey=NEWSDATA_API_KEY)
 async def get_financial_news():
     """
     Fetches the latest financial news, analyzes sentiment for each headline,
-    and returns a structured list of news articles.
+    and returns a structured list of unique news articles.
     """
     if not NEWSDATA_API_KEY:
         raise HTTPException(status_code=500, detail="News API key is not configured on the server.")
 
     try:
-        # --- START: MODIFIED CODE ---
-        # "economics" is not a valid category, so it has been removed.
-        # We will now only search for the 'business' category.
-        response = api.news_api(q="finance OR business", language="en", country="in", category="business")
-        # --- END: MODIFIED CODE ---
+        response = api.news_api(
+            q='"stocks" OR "mutual funds" OR "ETFs" OR "corporate bonds" OR "finance" OR "investing"',
+            language="en",
+            category="business"
+        )
         
         articles = response.get("results", [])
         
         processed_news = []
+        seen_titles = set()
+
         for article in articles:
             title = article.get("title")
             link = article.get("link")
             
-            if title and link and "No title" not in title:
+            if title and link and "No title" not in title and title not in seen_titles:
                 sentiment = analyze_sentiment(title)
                 processed_news.append({
                     "title": title,
@@ -41,6 +43,7 @@ async def get_financial_news():
                     "sentiment": sentiment.get("label", "NEUTRAL").upper(),
                     "sentiment_score": sentiment.get("score", 0.5)
                 })
+                seen_titles.add(title)
         
         return processed_news[:10]
 
