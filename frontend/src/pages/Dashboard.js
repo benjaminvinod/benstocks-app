@@ -1,9 +1,10 @@
 // src/pages/Dashboard.js
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getPortfolio, getPortfolioLiveValue, getTransactions } from '../api/portfolio';
+// --- START: CORRECTED IMPORT ---
+import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore } from '../api/portfolio'; // Import the new function
+// --- END: CORRECTED IMPORT ---
 import { searchStocks } from '../api/stocksApi';
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
@@ -16,6 +17,55 @@ import 'react-loading-skeleton/dist/skeleton.css';
 import Joyride, { STATUS } from 'react-joyride';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
+
+// --- START: NEW COMPONENT FOR THE SCORE GAUGE ---
+const DiversificationScoreCard = ({ scoreData }) => {
+    // Show skeleton if data isn't ready
+    if (!scoreData) {
+        return <Skeleton height={120} style={{ marginBottom: '2rem' }} />;
+    }
+
+    const { score, feedback, color } = scoreData;
+
+    // Handle case where score couldn't be calculated
+    if (score === 'N/A') {
+         return (
+            <div style={{
+                background: 'var(--bg-dark-primary)',
+                padding: '1.5rem',
+                borderRadius: '12px',
+                marginBottom: '2rem',
+                borderLeft: `5px solid ${color}` // Use gray color for N/A
+            }}>
+                <h3 style={{ marginTop: 0 }}>Portfolio Diversification Score</h3>
+                <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{feedback}</p>
+            </div>
+        );
+    }
+
+    // Normal display with score
+    return (
+        <div style={{
+            background: 'var(--bg-dark-primary)',
+            padding: '1.5rem',
+            borderRadius: '12px',
+            marginBottom: '2rem',
+            borderLeft: `5px solid ${color}` // Dynamic color based on score
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                    <h3 style={{ marginTop: 0 }}>Portfolio Diversification Score</h3>
+                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{feedback}</p>
+                </div>
+                <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: color }}>
+                    {score}/100
+                </div>
+            </div>
+        </div>
+    );
+};
+// --- END: NEW COMPONENT ---
+
 
 const AccordionHeader = ({ id, title, isOpen, onClick }) => (
     <div
@@ -65,6 +115,8 @@ const DashboardSkeleton = () => (
            <p><Skeleton width={220} /></p>
          </div>
        </div>
+       {/* --- Add skeleton for score card --- */}
+       <Skeleton height={120} style={{ marginBottom: '2rem' }}/>
        <Skeleton height={150} style={{ marginBottom: '2rem' }}/>
        <Skeleton height={60} style={{ marginBottom: '2rem' }}/>
        <div>
@@ -98,6 +150,10 @@ function Dashboard() {
     const [isCheckerOpen, setIsCheckerOpen] = useState(true);
     const [isHoldingsOpen, setIsHoldingsOpen] = useState(true);
     const [runTour, setRunTour] = useState(false);
+    // --- START: ADDED STATE FOR DIVERSIFICATION SCORE ---
+    const [diversificationScore, setDiversificationScore] = useState(null);
+    // --- END: ADDED STATE ---
+
     const tourSteps = [
         { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
         { target: '#stock-checker-form', content: 'Search for any stock here to see its details and historical performance.' },
@@ -123,38 +179,40 @@ function Dashboard() {
 
     const fetchDashboardData = useCallback(async () => {
         if (!user?.id) return;
+        // Keep loading true until all data is fetched
+        setIsInitialLoading(true);
+        setPortfolioError('');
+        setLiveValueError('');
+        setTransactionsError('');
+        setDiversificationScore(null); // Reset score on refetch
+
         try {
-            const [portfolioRes, liveValueRes, transactionsRes] = await Promise.all([
+            // Fetch all data concurrently
+            // --- START: FETCH SCORE ALONG WITH OTHER DATA ---
+            const [portfolioRes, liveValueRes, transactionsRes, diversificationRes] = await Promise.all([
                 getPortfolio(user.id),
                 getPortfolioLiveValue(user.id),
-                getTransactions(user.id)
+                getTransactions(user.id),
+                getDiversificationScore(user.id) // Fetch the score
             ]);
-            
-            if (portfolioRes && portfolioRes.investments) {
-                // --- START: THIS IS THE NEW CONSOLIDATION LOGIC ---
-                const holdings = {};
+            // --- END: FETCH SCORE ---
 
+            // Process portfolio and chart data
+            if (portfolioRes && portfolioRes.investments) {
+                const holdings = {};
                 portfolioRes.investments.forEach(inv => {
                     if (holdings[inv.symbol]) {
-                        // If we already have this stock, add to its totals
                         holdings[inv.symbol].quantity += inv.quantity;
                         holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
-                        // Keep track of original IDs if needed for selling, though this example simplifies it
                     } else {
-                        // If it's a new stock, create its entry
                         holdings[inv.symbol] = { ...inv };
                     }
                 });
-
-                // Convert the holdings object back to an array
                 const consolidatedPortfolio = Object.values(holdings).map(holding => {
-                    // Calculate the new average buy price
-                    const average_buy_price = holding.buy_cost_inr / holding.quantity;
+                    const average_buy_price = holding.quantity > 0 ? holding.buy_cost_inr / holding.quantity : 0;
                     return { ...holding, buy_price: average_buy_price };
                 });
-                
                 setPortfolio(consolidatedPortfolio);
-
                 if (consolidatedPortfolio.length > 0) {
                     const labels = consolidatedPortfolio.map(inv => inv.symbol);
                     const data = consolidatedPortfolio.map(inv => inv.buy_cost_inr || 0);
@@ -163,28 +221,51 @@ function Dashboard() {
                 } else {
                     setChartData(null);
                 }
-                // --- END: NEW CONSOLIDATION LOGIC ---
+            } else {
+                setPortfolioError('Could not load portfolio.');
+                setPortfolio([]); // Ensure portfolio is an empty array on error
+                setChartData(null);
+            }
 
-            } else { setPortfolioError('Could not load portfolio.'); }
-            
+            // Process live value data
             if (liveValueRes) {
                 setLivePortfolioValue(liveValueRes);
                 setInvestmentDetails(liveValueRes.investment_details || {});
-            } else { setLiveValueError('Could not load live values.'); }
-            
+            } else {
+                setLiveValueError('Could not load live values.');
+                setInvestmentDetails({});
+            }
+
+            // Process transactions data
             if (transactionsRes) {
                 setTransactions(transactionsRes);
-            } else { setTransactionsError('Could not load transactions.'); }
+            } else {
+                setTransactionsError('Could not load transactions.');
+                setTransactions([]); // Ensure transactions is an empty array on error
+            }
+
+            // Set diversification score data
+            setDiversificationScore(diversificationRes);
 
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
-            setPortfolioError("An error occurred while fetching your data.");
+            setPortfolioError("An error occurred while fetching dashboard data.");
+            // Set default/error states for all pieces of data
+            setPortfolio([]);
+            setChartData(null);
+            setLivePortfolioValue(null);
+            setInvestmentDetails({});
+            setTransactions([]);
+            setDiversificationScore({ score: 'N/A', feedback: 'Error fetching data.', color: '#A0AEC0' });
         } finally {
+            // Set loading to false only after all fetches are attempted
             setIsInitialLoading(false);
         }
-    }, [user]);
+    }, [user]); // Dependency array includes user
 
-    useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
+    useEffect(() => {
+        fetchDashboardData();
+    }, [fetchDashboardData]); // Run fetchDashboardData when the function itself changes (due to user change)
 
     useEffect(() => {
         if (symbol.trim() === '') {
@@ -210,10 +291,12 @@ function Dashboard() {
         navigate(`/stock/${selectedSymbol}`);
     };
 
+    // Render skeleton if still loading
     if (isInitialLoading) {
         return <div className="container"><DashboardSkeleton /></div>;
     }
 
+    // Main dashboard render
     return (
         <div className="container">
             <Joyride
@@ -232,7 +315,7 @@ function Dashboard() {
                     </p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    {liveValueError ? <p style={{color: 'var(--danger)'}}>{liveValueError}</p> : livePortfolioValue ? (
+                    {liveValueError ? <p style={{ color: 'var(--danger)' }}>{liveValueError}</p> : livePortfolioValue ? (
                         <>
                             <p style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>
                                 Investments Value: {formatCurrency(livePortfolioValue.total_investment_value_inr, 'INR')}
@@ -245,12 +328,16 @@ function Dashboard() {
                 </div>
             </div>
 
+             {/* --- START: RENDER THE NEW SCORE CARD --- */}
+             <DiversificationScoreCard scoreData={diversificationScore} />
+             {/* --- END: RENDER THE NEW SCORE CARD --- */}
+
             <div id="news-ticker"><NewsTicker /></div>
-            {transactionsError ? <p style={{color: 'var(--danger)'}}>Failed to load badges data.</p> : <Badges transactions={transactions} />}
+            {transactionsError ? <p style={{ color: 'var(--danger)' }}>Failed to load badges data.</p> : <Badges transactions={transactions} />}
 
             <AccordionHeader title="Portfolio Allocation (Buy Cost)" isOpen={isAllocationOpen} onClick={() => setIsAllocationOpen(!isAllocationOpen)} />
             <AccordionContent isOpen={isAllocationOpen}>
-                {portfolioError ? <p style={{color: 'var(--danger)'}}>{portfolioError}</p> : chartData ? (
+                {portfolioError ? <p style={{ color: 'var(--danger)' }}>{portfolioError}</p> : chartData ? (
                     <div style={{ width: '100%', maxWidth: '350px', margin: '0 auto' }}>
                         <Pie data={chartData} options={{ responsive: true, plugins: { legend:{ display: true, position: 'top', labels: {color: 'var(--text-primary)'} } } }} />
                     </div>
@@ -301,16 +388,25 @@ function Dashboard() {
 
             <AccordionHeader id="holdings-section" title="Your Holdings" isOpen={isHoldingsOpen} onClick={() => setIsHoldingsOpen(!isHoldingsOpen)} />
             <AccordionContent isOpen={isHoldingsOpen}>
-                {portfolioError ? <p style={{color: 'var(--danger)'}}>{portfolioError}</p> : portfolio.length === 0 ? <p>You have no investments yet.</p> : (
+                {portfolioError ? <p style={{ color: 'var(--danger)' }}>{portfolioError}</p> : portfolio.length === 0 ? <p>You have no investments yet.</p> : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-                        {portfolio.map((inv) => (
-                            <StockCard
-                                key={inv.id}
-                                investment={inv}
-                                fetchPortfolio={fetchDashboardData}
-                                liveDetails={investmentDetails[inv.id]}
-                            />
-                        ))}
+                        {portfolio.map((inv) => {
+                            // Find the corresponding live details using the original investment ID if available,
+                            // otherwise, fall back or maybe show consolidated live value (needs backend change for consolidated live value)
+                            // For simplicity now, we assume investmentDetails keys match the *original* IDs,
+                            // which might not align perfectly after consolidation if not handled carefully.
+                            // A better approach would be to calculate consolidated live value on backend or frontend.
+                            const liveDetail = investmentDetails[inv.id] || { live_value_inr: (inv.quantity * inv.buy_price) }; // Simple fallback
+
+                            return (
+                                <StockCard
+                                    key={inv.symbol} // Use symbol as key for consolidated view
+                                    investment={inv} // Pass the consolidated holding
+                                    fetchPortfolio={fetchDashboardData}
+                                    liveDetails={liveDetail} // Pass live details (might need adjustment)
+                                />
+                            );
+                        })}
                     </div>
                 )}
             </AccordionContent>

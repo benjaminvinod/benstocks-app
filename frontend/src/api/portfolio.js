@@ -82,6 +82,19 @@ export const getLeaderboard = async (limit = 10) => {
   }
 };
 
+// --- START: ADDED CODE ---
+export const getDiversificationScore = async (userId) => {
+  try {
+    const response = await axios.get(`${BASE_URL}/analytics/diversification-score/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching diversification score:", error);
+    // Return a default error state so the app doesn't crash
+    return { score: 'N/A', feedback: 'Could not calculate score.', color: '#A0AEC0' };
+  }
+};
+// --- END: ADDED CODE ---
+
 export const getWatchlist = async (userId) => {
   try {
     const response = await axios.get(`${BASE_URL}/portfolio/watchlist/${userId}`);

@@ -2,7 +2,7 @@
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, portfolio, stocks, info, leaderboard, admin, news, mutual_funds
+from routes import auth, portfolio, stocks, info, leaderboard, admin, news, mutual_funds, analytics
 from websocket_manager import manager, price_updater_task
 
 app = FastAPI(
@@ -13,10 +13,8 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """On startup, create the background task for price updates."""
     asyncio.create_task(price_updater_task())
 
-# CORS middleware remains the same
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,7 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include all the existing, working routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["Portfolio"])
 app.include_router(stocks.router, prefix="/stocks", tags=["Stocks"])
@@ -34,7 +31,7 @@ app.include_router(leaderboard.router, prefix="/leaderboard", tags=["Leaderboard
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(news.router, prefix="/news", tags=["News"])
 app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
-
+app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"]) # Add this line
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
