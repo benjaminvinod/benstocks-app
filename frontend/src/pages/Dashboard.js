@@ -1,10 +1,8 @@
 // src/pages/Dashboard.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-// --- START: CORRECTED IMPORT ---
-import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore } from '../api/portfolio'; // Import the new function
-// --- END: CORRECTED IMPORT ---
+import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore } from '../api/portfolio';
 import { searchStocks } from '../api/stocksApi';
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
@@ -12,122 +10,72 @@ import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import Badges from '../components/Badges';
 import NewsTicker from '../components/NewsTicker';
-import Skeleton, { SkeletonTheme } from 'react-loading-skeleton';
-import 'react-loading-skeleton/dist/skeleton.css';
 import Joyride, { STATUS } from 'react-joyride';
+import {
+  Box, Container, Flex, Heading, Text, SimpleGrid,
+  Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon,
+  Input, List, ListItem, Spinner, Skeleton,
+} from '@chakra-ui/react';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// --- START: NEW COMPONENT FOR THE SCORE GAUGE ---
+// Diversification Score Card using Chakra
 const DiversificationScoreCard = ({ scoreData }) => {
-    // Show skeleton if data isn't ready
     if (!scoreData) {
-        return <Skeleton height={120} style={{ marginBottom: '2rem' }} />;
+        return <Skeleton height="120px" mb={8} borderRadius="lg" />;
     }
-
     const { score, feedback, color } = scoreData;
 
-    // Handle case where score couldn't be calculated
-    if (score === 'N/A') {
-         return (
-            <div style={{
-                background: 'var(--bg-dark-primary)',
-                padding: '1.5rem',
-                borderRadius: '12px',
-                marginBottom: '2rem',
-                borderLeft: `5px solid ${color}` // Use gray color for N/A
-            }}>
-                <h3 style={{ marginTop: 0 }}>Portfolio Diversification Score</h3>
-                <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{feedback}</p>
-            </div>
-        );
-    }
-
-    // Normal display with score
     return (
-        <div style={{
-            background: 'var(--bg-dark-primary)',
-            padding: '1.5rem',
-            borderRadius: '12px',
-            marginBottom: '2rem',
-            borderLeft: `5px solid ${color}` // Dynamic color based on score
-        }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h3 style={{ marginTop: 0 }}>Portfolio Diversification Score</h3>
-                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>{feedback}</p>
-                </div>
-                <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: color }}>
-                    {score}/100
-                </div>
-            </div>
-        </div>
+        <Box
+            bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
+            p={6}
+            borderRadius="lg"
+            mb={8}
+            borderLeftWidth="5px"
+            borderLeftColor={color || 'gray.500'}
+            boxShadow="md"
+        >
+            <Flex justify="space-between" align="center">
+                <Box>
+                    <Heading size="md" mb={1}>Portfolio Diversification Score</Heading>
+                    <Text color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="sm">{feedback}</Text>
+                </Box>
+                {score !== 'N/A' ? (
+                    <Text fontSize="3xl" fontWeight="bold" color={color || 'gray.500'}>
+                        {score}/100
+                    </Text>
+                ) : (
+                    <Text fontSize="xl" fontWeight="bold" color="var(--text-secondary-dynamic, var(--text-secondary))">N/A</Text>
+                )}
+            </Flex>
+        </Box>
     );
 };
-// --- END: NEW COMPONENT ---
 
-
-const AccordionHeader = ({ id, title, isOpen, onClick }) => (
-    <div
-        id={id}
-        onClick={onClick}
-        style={{
-            backgroundColor: 'var(--bg-dark-primary)',
-            padding: '1rem 1.5rem',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: '2rem'
-        }}
-    >
-        <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>{title}</h3>
-        <span style={{ fontSize: '1.5rem', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}>
-        {isOpen ? '−' : '+'}
-        </span>
-    </div>
-);
-
-const AccordionContent = ({ isOpen, children }) => (
-    <div style={{
-        padding: '1.5rem',
-        border: '1px solid var(--border-color)',
-        borderTop: 'none',
-        borderBottomLeftRadius: '8px',
-        borderBottomRightRadius: '8px',
-        display: isOpen ? 'block' : 'none'
-    }}>
-        {children}
-    </div>
-);
-
+// Dashboard Skeleton using Chakra Skeletons
 const DashboardSkeleton = () => (
-    <SkeletonTheme baseColor="#2d3748" highlightColor="#4a5568">
-       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-         <div>
-           <h1><Skeleton width={200} /></h1>
-           <p><Skeleton width={250} /></p>
-         </div>
-         <div style={{ textAlign: 'right' }}>
-           <p><Skeleton width={180} /></p>
-           <p><Skeleton width={220} /></p>
-         </div>
-       </div>
-       {/* --- Add skeleton for score card --- */}
-       <Skeleton height={120} style={{ marginBottom: '2rem' }}/>
-       <Skeleton height={150} style={{ marginBottom: '2rem' }}/>
-       <Skeleton height={60} style={{ marginBottom: '2rem' }}/>
-       <div>
-         <Skeleton height={40} style={{ marginBottom: '1rem' }}/>
-         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-           <Skeleton height={200} />
-           <Skeleton height={200} />
-           <Skeleton height={200} />
-         </div>
-       </div>
-    </SkeletonTheme>
+    <Container maxW="container.xl">
+        <Flex justify="space-between" align="center" mb={8}>
+            <Box>
+                <Skeleton height="40px" width="250px" mb={2} />
+                <Skeleton height="20px" width="300px" />
+            </Box>
+            <Box textAlign="right">
+                <Skeleton height="20px" width="200px" mb={2} />
+                <Skeleton height="30px" width="250px" />
+            </Box>
+        </Flex>
+        <Skeleton height="120px" mb={8} borderRadius="lg"/>
+        <Skeleton height="150px" mb={8} borderRadius="lg"/>
+        <Skeleton height="60px" mb={8} borderRadius="lg"/>
+        <Skeleton height="40px" width="200px" mb={4} />
+        <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
+           <Skeleton height="250px" borderRadius="lg"/>
+           <Skeleton height="250px" borderRadius="lg"/>
+           <Skeleton height="250px" borderRadius="lg"/>
+        </SimpleGrid>
+    </Container>
 );
 
 function Dashboard() {
@@ -146,13 +94,8 @@ function Dashboard() {
     const [isSearching, setIsSearching] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
     const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
-    const [isAllocationOpen, setIsAllocationOpen] = useState(false);
-    const [isCheckerOpen, setIsCheckerOpen] = useState(true);
-    const [isHoldingsOpen, setIsHoldingsOpen] = useState(true);
     const [runTour, setRunTour] = useState(false);
-    // --- START: ADDED STATE FOR DIVERSIFICATION SCORE ---
     const [diversificationScore, setDiversificationScore] = useState(null);
-    // --- END: ADDED STATE ---
 
     const tourSteps = [
         { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
@@ -179,238 +122,208 @@ function Dashboard() {
 
     const fetchDashboardData = useCallback(async () => {
         if (!user?.id) return;
-        // Keep loading true until all data is fetched
         setIsInitialLoading(true);
-        setPortfolioError('');
-        setLiveValueError('');
-        setTransactionsError('');
-        setDiversificationScore(null); // Reset score on refetch
+        setPortfolioError(''); setLiveValueError(''); setTransactionsError(''); setDiversificationScore(null);
 
         try {
-            // Fetch all data concurrently
-            // --- START: FETCH SCORE ALONG WITH OTHER DATA ---
             const [portfolioRes, liveValueRes, transactionsRes, diversificationRes] = await Promise.all([
-                getPortfolio(user.id),
-                getPortfolioLiveValue(user.id),
-                getTransactions(user.id),
-                getDiversificationScore(user.id) // Fetch the score
+                getPortfolio(user.id), getPortfolioLiveValue(user.id),
+                getTransactions(user.id), getDiversificationScore(user.id)
             ]);
-            // --- END: FETCH SCORE ---
 
-            // Process portfolio and chart data
             if (portfolioRes && portfolioRes.investments) {
-                const holdings = {};
-                portfolioRes.investments.forEach(inv => {
-                    if (holdings[inv.symbol]) {
-                        holdings[inv.symbol].quantity += inv.quantity;
-                        holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
-                    } else {
-                        holdings[inv.symbol] = { ...inv };
-                    }
-                });
-                const consolidatedPortfolio = Object.values(holdings).map(holding => {
-                    const average_buy_price = holding.quantity > 0 ? holding.buy_cost_inr / holding.quantity : 0;
-                    return { ...holding, buy_price: average_buy_price };
-                });
-                setPortfolio(consolidatedPortfolio);
-                if (consolidatedPortfolio.length > 0) {
-                    const labels = consolidatedPortfolio.map(inv => inv.symbol);
-                    const data = consolidatedPortfolio.map(inv => inv.buy_cost_inr || 0);
-                    const backgroundColors = labels.map(() => `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`);
-                    setChartData({ labels, datasets: [{ label: 'Investment Allocation (by Cost)', data, backgroundColor: backgroundColors }] });
-                } else {
-                    setChartData(null);
-                }
-            } else {
-                setPortfolioError('Could not load portfolio.');
-                setPortfolio([]); // Ensure portfolio is an empty array on error
-                setChartData(null);
-            }
+                 const holdings = {};
+                 portfolioRes.investments.forEach(inv => {
+                     if (holdings[inv.symbol]) {
+                         holdings[inv.symbol].quantity += inv.quantity;
+                         holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
+                     } else { holdings[inv.symbol] = { ...inv }; }
+                 });
+                 const consolidatedPortfolio = Object.values(holdings).map(holding => {
+                     const average_buy_price = holding.quantity > 0 ? holding.buy_cost_inr / holding.quantity : 0;
+                     return { ...holding, buy_price: average_buy_price };
+                 });
+                 setPortfolio(consolidatedPortfolio);
 
-            // Process live value data
-            if (liveValueRes) {
-                setLivePortfolioValue(liveValueRes);
-                setInvestmentDetails(liveValueRes.investment_details || {});
-            } else {
-                setLiveValueError('Could not load live values.');
-                setInvestmentDetails({});
-            }
+                 if (consolidatedPortfolio.length > 0) {
+                     const labels = consolidatedPortfolio.map(inv => inv.symbol);
+                     const data = consolidatedPortfolio.map(inv => inv.buy_cost_inr || 0);
+                     const backgroundColors = labels.map(() => `hsla(${Math.random() * 360}, 70%, 70%, 0.6)`);
+                     setChartData({ labels, datasets: [{ label: 'Allocation (Cost)', data, backgroundColor: backgroundColors }] });
+                 } else { setChartData(null); }
+            } else { setPortfolioError('Could not load portfolio.'); setPortfolio([]); setChartData(null); }
 
-            // Process transactions data
-            if (transactionsRes) {
-                setTransactions(transactionsRes);
-            } else {
-                setTransactionsError('Could not load transactions.');
-                setTransactions([]); // Ensure transactions is an empty array on error
-            }
+            if (liveValueRes) { setLivePortfolioValue(liveValueRes); setInvestmentDetails(liveValueRes.investment_details || {}); }
+            else { setLiveValueError('Could not load live values.'); setInvestmentDetails({}); }
 
-            // Set diversification score data
+            if (transactionsRes) { setTransactions(transactionsRes); }
+            else { setTransactionsError('Could not load transactions.'); setTransactions([]); }
+
             setDiversificationScore(diversificationRes);
 
         } catch (error) {
-            console.error("Failed to fetch dashboard data:", error);
-            setPortfolioError("An error occurred while fetching dashboard data.");
-            // Set default/error states for all pieces of data
-            setPortfolio([]);
-            setChartData(null);
-            setLivePortfolioValue(null);
-            setInvestmentDetails({});
-            setTransactions([]);
+            console.error("Failed fetch dashboard data:", error);
+            setPortfolioError("Error fetching dashboard data.");
+            setPortfolio([]); setChartData(null); setLivePortfolioValue(null);
+            setInvestmentDetails({}); setTransactions([]);
             setDiversificationScore({ score: 'N/A', feedback: 'Error fetching data.', color: '#A0AEC0' });
-        } finally {
-            // Set loading to false only after all fetches are attempted
-            setIsInitialLoading(false);
-        }
-    }, [user]); // Dependency array includes user
+        } finally { setIsInitialLoading(false); }
+    }, [user]);
+
+    useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
     useEffect(() => {
-        fetchDashboardData();
-    }, [fetchDashboardData]); // Run fetchDashboardData when the function itself changes (due to user change)
-
-    useEffect(() => {
-        if (symbol.trim() === '') {
-            setSuggestions([]);
-            return;
-        }
+        if (symbol.trim() === '') { setSuggestions([]); return; }
         const fetchSuggestions = async () => {
             setIsSearching(true);
             const results = await searchStocks(symbol);
-            setSuggestions(results);
-            setIsSearching(false);
+            setSuggestions(results); setIsSearching(false);
         };
-        const debounceTimer = setTimeout(() => {
-            fetchSuggestions();
-        }, 300);
+        const debounceTimer = setTimeout(fetchSuggestions, 300);
         return () => clearTimeout(debounceTimer);
     }, [symbol]);
 
     const handleSuggestionClick = (selectedSymbol) => {
-        setSymbol(selectedSymbol);
-        setSuggestions([]);
-        setIsSuggestionsVisible(false);
+        setSymbol(selectedSymbol); setSuggestions([]); setIsSuggestionsVisible(false);
         navigate(`/stock/${selectedSymbol}`);
     };
 
-    // Render skeleton if still loading
     if (isInitialLoading) {
-        return <div className="container"><DashboardSkeleton /></div>;
+        return <DashboardSkeleton />;
     }
 
-    // Main dashboard render
     return (
-        <div className="container">
-            <Joyride
-                steps={tourSteps}
-                run={runTour}
-                callback={handleJoyrideCallback}
-                continuous showProgress showSkipButton
-                styles={{ options: { arrowColor: '#2d3748', backgroundColor: '#2d3748', primaryColor: '#4299e1', textColor: '#edf2f7' } }}
-            />
+        <Container maxW="container.xl">
+            <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showProgress showSkipButton styles={{ options: { arrowColor: '#2d3748', backgroundColor: '#2d3748', primaryColor: '#4299e1', textColor: '#edf2f7' } }}/>
 
-            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h1>Welcome, {user?.username || 'Investor'}!</h1>
-                    <p id="cash-balance" style={{ color: 'var(--text-secondary)', margin: 0 }}>
-                        Cash Balance: {formatCurrency(user?.balance || 0, 'INR')}
-                    </p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                    {liveValueError ? <p style={{ color: 'var(--danger)' }}>{liveValueError}</p> : livePortfolioValue ? (
+            <Flex justify="space-between" align="center" mb={8} wrap="wrap" gap={4}>
+                <Box>
+                    <Heading as="h1" size="xl">Welcome, {user?.username || 'Investor'}!</Heading>
+                    <Text id="cash-balance" color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="lg">
+                        Cash Balance: <Text as="span" fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{formatCurrency(user?.balance || 0, 'INR')}</Text>
+                    </Text>
+                </Box>
+                <Box textAlign="right">
+                    {liveValueError ? <Text color="red.500">{liveValueError}</Text> : livePortfolioValue ? (
                         <>
-                            <p style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>
-                                Investments Value: {formatCurrency(livePortfolioValue.total_investment_value_inr, 'INR')}
-                            </p>
-                            <p style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                            <Text color="var(--text-secondary-dynamic, var(--text-secondary))">
+                                Investments Value: <Text as="span" fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{formatCurrency(livePortfolioValue.total_investment_value_inr, 'INR')}</Text>
+                            </Text>
+                            <Text fontSize="2xl" color="var(--text-primary-dynamic, var(--text-primary))" fontWeight="bold">
                                 Total Assets: {formatCurrency(livePortfolioValue.total_portfolio_value_inr, 'INR')}
-                            </p>
+                            </Text>
                         </>
-                    ) : <p>Loading values...</p>}
-                </div>
-            </div>
+                    ) : <Spinner size="sm" />}
+                </Box>
+            </Flex>
 
-             {/* --- START: RENDER THE NEW SCORE CARD --- */}
-             <DiversificationScoreCard scoreData={diversificationScore} />
-             {/* --- END: RENDER THE NEW SCORE CARD --- */}
+            <DiversificationScoreCard scoreData={diversificationScore} />
 
-            <div id="news-ticker"><NewsTicker /></div>
-            {transactionsError ? <p style={{ color: 'var(--danger)' }}>Failed to load badges data.</p> : <Badges transactions={transactions} />}
+            <SimpleGrid columns={[1, null, 2]} spacing={8} mb={8}>
+                <Box id="news-ticker"><NewsTicker /></Box>
+                <Box>
+                    {transactionsError ? <Text color="red.500">Failed to load badges.</Text> : <Badges transactions={transactions} />}
+                 </Box>
+            </SimpleGrid>
 
-            <AccordionHeader title="Portfolio Allocation (Buy Cost)" isOpen={isAllocationOpen} onClick={() => setIsAllocationOpen(!isAllocationOpen)} />
-            <AccordionContent isOpen={isAllocationOpen}>
-                {portfolioError ? <p style={{ color: 'var(--danger)' }}>{portfolioError}</p> : chartData ? (
-                    <div style={{ width: '100%', maxWidth: '350px', margin: '0 auto' }}>
-                        <Pie data={chartData} options={{ responsive: true, plugins: { legend:{ display: true, position: 'top', labels: {color: 'var(--text-primary)'} } } }} />
-                    </div>
-                ) : <p>No investments yet to show allocation.</p>}
-            </AccordionContent>
+            <Accordion allowMultiple defaultIndex={[1, 2]}>
+                <AccordionItem mb={6} border="none">
+                    <h2>
+                        <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
+                            <Box flex="1" textAlign="left">
+                                <Heading size="md">Portfolio Allocation (Buy Cost)</Heading>
+                            </Box>
+                            <AccordionIcon />
+                        </AccordionButton>
+                    </h2>
+                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" borderBottomRadius="lg" pt={4}>
+                        {portfolioError ? <Text color="red.500">{portfolioError}</Text> : chartData ? (
+                            <Box maxW="350px" mx="auto">
+                                <Pie data={chartData} options={{ responsive: true, plugins: { legend:{ display: true, position: 'top', labels: {color: 'var(--text-primary-dynamic, var(--text-primary))'} } } }} />
+                            </Box>
+                        ) : <Text>No investments yet to show allocation.</Text>}
+                    </AccordionPanel>
+                </AccordionItem>
 
-            <AccordionHeader title="Stock Checker" isOpen={isCheckerOpen} onClick={() => setIsCheckerOpen(!isCheckerOpen)} />
-            <AccordionContent isOpen={isCheckerOpen}>
-                <p>Enter a stock symbol or company name to search.</p>
-                <div style={{ position: 'relative' }}>
-                    <form id="stock-checker-form" style={{ display: 'flex', gap: '1rem' }} onSubmit={(e) => e.preventDefault()}>
-                        <input
-                            type="text"
-                            placeholder="e.g., AAPL or Reliance"
-                            value={symbol}
-                            onChange={(e) => {
-                                setSymbol(e.target.value);
-                                setIsSuggestionsVisible(true);
-                            }}
-                            onBlur={() => setTimeout(() => setIsSuggestionsVisible(false), 200)}
-                            style={{ flex: 1 }}
-                        />
-                    </form>
-                    {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
-                        <div style={{
-                            position: 'absolute', top: '100%', left: 0, right: 0,
-                            background: 'var(--bg-dark-primary)',
-                            border: '1px solid var(--border-color)', borderRadius: '0 0 8px 8px',
-                            marginTop: '-1px',
-                            zIndex: 10, maxHeight: '300px', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.2)'
-                        }}>
-                            {isSearching && <div style={{ padding: '1rem', color: 'var(--text-secondary)', textAlign: 'center' }}>Searching...</div>}
-                            {!isSearching && suggestions.map((s) => (
-                                <div
-                                    key={s.symbol}
-                                    onMouseDown={() => handleSuggestionClick(s.symbol)}
-                                    style={{ padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border-color)'}}
-                                    className="suggestion-item" >
-                                    <strong style={{ color: 'var(--text-primary)' }}>{s.symbol}</strong>
-                                    <span style={{ marginLeft: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9em' }}>{s.name}</span>
-                                </div>
-                            ))}
-                            {!isSearching && suggestions.length > 0 && <style>{`.suggestion-item:last-child { border-bottom: none; }`}</style>}
-                        </div>
-                    )}
-                </div>
-            </AccordionContent>
+                 <AccordionItem mb={6} border="none">
+                    <h2>
+                        <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
+                            <Box flex="1" textAlign="left">
+                                <Heading size="md">Stock Checker</Heading>
+                            </Box>
+                            <AccordionIcon />
+                        </AccordionButton>
+                    </h2>
+                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" borderBottomRadius="lg" pt={4}>
+                        <Text mb={4}>Enter a stock symbol or company name to search.</Text>
+                        <Box position="relative">
+                            <Input
+                                id="stock-checker-form"
+                                placeholder="e.g., AAPL or Reliance"
+                                value={symbol}
+                                onChange={(e) => { setSymbol(e.target.value); setIsSuggestionsVisible(true); }}
+                                onBlur={() => setTimeout(() => setIsSuggestionsVisible(false), 200)}
+                            />
+                            {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
+                                <Box
+                                    position="absolute" top="100%" left={0} right={0}
+                                    bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
+                                    borderWidth="1px" borderColor="var(--border-dynamic, var(--border-color))" borderRadius="0 0 8px 8px"
+                                    mt="-1px" zIndex={10} maxHeight="300px" overflowY="auto" boxShadow="lg"
+                                >
+                                    {isSearching && <Flex justify="center" p={4}><Spinner size="md"/></Flex>}
+                                    {!isSearching && (
+                                        <List spacing={0}>
+                                            {suggestions.map((s) => (
+                                                <ListItem
+                                                    key={s.symbol}
+                                                    onMouseDown={() => handleSuggestionClick(s.symbol)}
+                                                    px={4} py={2} cursor="pointer"
+                                                    borderBottomWidth="1px" borderColor="var(--border-dynamic, var(--border-color))"
+                                                    _last={{ borderBottomWidth: 0 }}
+                                                    _hover={{ background: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))' }}
+                                                >
+                                                    <Text as="strong" color="var(--text-primary-dynamic, var(--text-primary))">{s.symbol}</Text>
+                                                    <Text as="span" ml={2} color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="sm">{s.name}</Text>
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    )}
+                                </Box>
+                            )}
+                        </Box>
+                    </AccordionPanel>
+                 </AccordionItem>
 
-            <AccordionHeader id="holdings-section" title="Your Holdings" isOpen={isHoldingsOpen} onClick={() => setIsHoldingsOpen(!isHoldingsOpen)} />
-            <AccordionContent isOpen={isHoldingsOpen}>
-                {portfolioError ? <p style={{ color: 'var(--danger)' }}>{portfolioError}</p> : portfolio.length === 0 ? <p>You have no investments yet.</p> : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-                        {portfolio.map((inv) => {
-                            // Find the corresponding live details using the original investment ID if available,
-                            // otherwise, fall back or maybe show consolidated live value (needs backend change for consolidated live value)
-                            // For simplicity now, we assume investmentDetails keys match the *original* IDs,
-                            // which might not align perfectly after consolidation if not handled carefully.
-                            // A better approach would be to calculate consolidated live value on backend or frontend.
-                            const liveDetail = investmentDetails[inv.id] || { live_value_inr: (inv.quantity * inv.buy_price) }; // Simple fallback
-
-                            return (
-                                <StockCard
-                                    key={inv.symbol} // Use symbol as key for consolidated view
-                                    investment={inv} // Pass the consolidated holding
-                                    fetchPortfolio={fetchDashboardData}
-                                    liveDetails={liveDetail} // Pass live details (might need adjustment)
-                                />
-                            );
-                        })}
-                    </div>
-                )}
-            </AccordionContent>
-        </div>
+                <AccordionItem border="none">
+                    <h2 id="holdings-section">
+                        <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
+                            <Box flex="1" textAlign="left">
+                                <Heading size="md">Your Holdings</Heading>
+                            </Box>
+                            <AccordionIcon />
+                        </AccordionButton>
+                    </h2>
+                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" borderBottomRadius="lg" pt={4}>
+                        {portfolioError ? <Text color="red.500">{portfolioError}</Text> : portfolio.length === 0 ? <Text>You have no investments yet.</Text> : (
+                            <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
+                                {portfolio.map((inv) => {
+                                    const liveDetail = investmentDetails[inv.id];
+                                    return (
+                                        <StockCard
+                                            key={inv.symbol}
+                                            investment={inv}
+                                            fetchPortfolio={fetchDashboardData}
+                                            liveDetails={liveDetail}
+                                        />
+                                    );
+                                })}
+                            </SimpleGrid>
+                        )}
+                    </AccordionPanel>
+                </AccordionItem>
+            </Accordion>
+        </Container>
     );
 }
 

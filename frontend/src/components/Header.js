@@ -1,6 +1,9 @@
+// src/components/Header.js
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Box, Flex, Link, Button, Heading, Spacer, HStack } from '@chakra-ui/react';
+import ThemeSelector from './ThemeSelector'; // Import the new component
 
 function Header() {
   const { isAuthenticated, logout } = useAuth();
@@ -11,61 +14,56 @@ function Header() {
     navigate('/login');
   };
 
-  const headerStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '1rem 2rem',
-    backgroundColor: 'var(--bg-dark-secondary)',
-    borderBottom: '1px solid var(--border-color)',
-    color: 'var(--text-primary)',
-  };
-
-  const navLinkStyle = {
-    color: 'var(--text-primary)',
-    marginRight: '1.5rem',
-    textDecoration: 'none',
-    fontWeight: 600,
-  };
-
-  const logoStyle = {
-    color: 'var(--text-primary)',
-    textDecoration: 'none',
-    fontSize: '1.75rem',
-    fontWeight: 'bold',
-  };
-
   return (
-    <header style={headerStyle}>
-      <Link to={isAuthenticated ? "/dashboard" : "/"} style={logoStyle}>
-        BenStocks
-      </Link>
-      <nav>
+    <Flex
+      as="header"
+      align="center"
+      justify="space-between"
+      wrap="wrap" // Allows wrapping on small screens if needed
+      p={[3, 6]} // Responsive padding (less on mobile, more on desktop)
+      bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" // Dynamic background
+      borderBottomWidth="1px"
+      borderColor="var(--border-dynamic, var(--border-color))" // Dynamic border
+      color="var(--text-primary-dynamic, var(--text-primary))" // Dynamic text
+      boxShadow="sm" // Add subtle shadow
+    >
+      <Heading as="h1" size="lg" letterSpacing={'-.1rem'}>
+        <Link as={RouterLink} to={isAuthenticated ? "/dashboard" : "/"} _hover={{ textDecoration: 'none' }}>
+          BenStocks
+        </Link>
+      </Heading>
+
+      <Spacer /> {/* Pushes navigation to the right */}
+
+      <HStack spacing={4} align="center"> {/* Use HStack for horizontal layout */}
         {isAuthenticated ? (
           <>
-            <Link to="/dashboard" style={navLinkStyle}>Dashboard</Link>
-            <Link to="/etfs" style={navLinkStyle}>ETFs</Link>
-            <Link to="/mutual-funds" style={navLinkStyle}>Mutual Funds</Link>
-            <Link to="/risk-profile" style={navLinkStyle}>Risk Profiling Quiz</Link>
-            <Link to="/tax-optimizer" style={navLinkStyle}>Tax Optimizer</Link> {/* --- START: ADDED CODE --- */}
-            <Link to="/transactions" style={navLinkStyle}>Transactions</Link>
-            <Link to="/learn" style={navLinkStyle}>Learn</Link>
-            <Link to="/leaderboard" style={navLinkStyle}>Leaderboard</Link>
-            <button onClick={handleLogout} style={{ padding: '0.5rem 1rem' }}>
+             {/* Use Chakra Links */}
+            <Link as={RouterLink} to="/dashboard" fontWeight="600">Dashboard</Link>
+            <Link as={RouterLink} to="/etfs" fontWeight="600">ETFs</Link>
+            <Link as={RouterLink} to="/mutual-funds" fontWeight="600">Mutual Funds</Link>
+            <Link as={RouterLink} to="/risk-profile" fontWeight="600">Risk Quiz</Link>
+            <Link as={RouterLink} to="/tax-optimizer" fontWeight="600">Tax Optimizer</Link>
+            <Link as={RouterLink} to="/transactions" fontWeight="600">Transactions</Link>
+            <Link as={RouterLink} to="/learn" fontWeight="600">Learn</Link>
+            <Link as={RouterLink} to="/leaderboard" fontWeight="600">Leaderboard</Link>
+            <ThemeSelector /> {/* Add Theme Selector */}
+            <Button size="sm" onClick={handleLogout} colorScheme="red"> {/* Use Chakra Button */}
               Log Out
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <Link to="/learn" style={navLinkStyle}>Learn</Link>
-            <Link to="/login" style={navLinkStyle}>Log In</Link>
-            <button onClick={() => navigate('/signup')} style={{ padding: '0.5rem 1rem' }}>
+            <Link as={RouterLink} to="/learn" fontWeight="600">Learn</Link>
+            <Link as={RouterLink} to="/login" fontWeight="600">Log In</Link>
+            <ThemeSelector /> {/* Add Theme Selector */}
+            <Button size="sm" onClick={() => navigate('/signup')}> {/* Use Chakra Button */}
               Sign Up
-            </button>
+            </Button>
           </>
         )}
-      </nav>
-    </header>
+      </HStack>
+    </Flex>
   );
 }
 
