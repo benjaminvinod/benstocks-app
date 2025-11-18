@@ -99,7 +99,7 @@ function Dashboard() {
 
     const tourSteps = [
         { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
-        { target: '#stock-checker-form', content: 'Search for any stock here to see its details and historical performance.' },
+        { target: '#stock-checker-box', content: 'Search for any stock here to see its details and historical performance.' },
         { target: '#holdings-section', content: 'Your purchased investments will appear in this section.' },
         { target: '#news-ticker', content: 'Check out the latest financial news to help inform your investment decisions.' },
     ];
@@ -137,10 +137,19 @@ function Dashboard() {
                      if (holdings[inv.symbol]) {
                          holdings[inv.symbol].quantity += inv.quantity;
                          holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
-                     } else { holdings[inv.symbol] = { ...inv }; }
+                         // Accumulate total cost in ORIGINAL currency
+                         holdings[inv.symbol].total_cost_original += (inv.quantity * inv.buy_price);
+                     } else { 
+                        holdings[inv.symbol] = { 
+                            ...inv,
+                            // Initialize total cost in ORIGINAL currency
+                            total_cost_original: inv.quantity * inv.buy_price 
+                        }; 
+                    }
                  });
                  const consolidatedPortfolio = Object.values(holdings).map(holding => {
-                     const average_buy_price = holding.quantity > 0 ? holding.buy_cost_inr / holding.quantity : 0;
+                     // Calculate average using the original currency totals
+                     const average_buy_price = holding.quantity > 0 ? holding.total_cost_original / holding.quantity : 0;
                      return { ...holding, buy_price: average_buy_price };
                  });
                  setPortfolio(consolidatedPortfolio);
@@ -226,7 +235,58 @@ function Dashboard() {
                  </Box>
             </SimpleGrid>
 
-            <Accordion allowMultiple defaultIndex={[1, 2]}>
+            {/* --- FIXED: MOVED STOCK CHECKER OUTSIDE ACCORDION --- */}
+            {/* This separate box ensures the dropdown is never hidden/clipped */}
+            <Box 
+                id="stock-checker-box"
+                mb={6} 
+                bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" 
+                p={6} 
+                borderRadius="lg" 
+                boxShadow="md"
+            >
+                <Heading size="md" mb={4}>Stock Checker</Heading>
+                <Text mb={4}>Enter a stock symbol or company name to search.</Text>
+                <Box position="relative" zIndex={50}> {/* High Z-Index so dropdown floats over Accordion */}
+                    <Input
+                        id="stock-checker-form"
+                        placeholder="e.g., AAPL or Reliance"
+                        value={symbol}
+                        onChange={(e) => { setSymbol(e.target.value); setIsSuggestionsVisible(true); }}
+                        onBlur={() => setTimeout(() => setIsSuggestionsVisible(false), 200)}
+                    />
+                    {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
+                        <Box
+                            position="absolute" top="100%" left={0} right={0}
+                            bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
+                            borderWidth="1px" borderColor="var(--border-dynamic, var(--border-color))" borderRadius="0 0 8px 8px"
+                            mt="-1px" zIndex={1000} maxHeight="300px" overflowY="auto" boxShadow="lg"
+                        >
+                            {isSearching && <Flex justify="center" p={4}><Spinner size="md"/></Flex>}
+                            {!isSearching && (
+                                <List spacing={0}>
+                                    {suggestions.map((s) => (
+                                        <ListItem
+                                            key={s.symbol}
+                                            onMouseDown={() => handleSuggestionClick(s.symbol)}
+                                            px={4} py={2} cursor="pointer"
+                                            borderBottomWidth="1px" borderColor="var(--border-dynamic, var(--border-color))"
+                                            _last={{ borderBottomWidth: 0 }}
+                                            _hover={{ background: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))' }}
+                                        >
+                                            <Text as="strong" color="var(--text-primary-dynamic, var(--text-primary))">{s.symbol}</Text>
+                                            <Text as="span" ml={2} color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="sm">{s.name}</Text>
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            )}
+                        </Box>
+                    )}
+                </Box>
+            </Box>
+            {/* --- END FIXED SECTION --- */}
+
+            <Accordion allowMultiple defaultIndex={[0, 1]}>
                 <AccordionItem mb={6} border="none">
                     <h2>
                         <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
@@ -244,56 +304,6 @@ function Dashboard() {
                         ) : <Text>No investments yet to show allocation.</Text>}
                     </AccordionPanel>
                 </AccordionItem>
-
-                 <AccordionItem mb={6} border="none">
-                    <h2>
-                        <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
-                            <Box flex="1" textAlign="left">
-                                <Heading size="md">Stock Checker</Heading>
-                            </Box>
-                            <AccordionIcon />
-                        </AccordionButton>
-                    </h2>
-                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" borderBottomRadius="lg" pt={4}>
-                        <Text mb={4}>Enter a stock symbol or company name to search.</Text>
-                        <Box position="relative">
-                            <Input
-                                id="stock-checker-form"
-                                placeholder="e.g., AAPL or Reliance"
-                                value={symbol}
-                                onChange={(e) => { setSymbol(e.target.value); setIsSuggestionsVisible(true); }}
-                                onBlur={() => setTimeout(() => setIsSuggestionsVisible(false), 200)}
-                            />
-                            {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
-                                <Box
-                                    position="absolute" top="100%" left={0} right={0}
-                                    bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
-                                    borderWidth="1px" borderColor="var(--border-dynamic, var(--border-color))" borderRadius="0 0 8px 8px"
-                                    mt="-1px" zIndex={10} maxHeight="300px" overflowY="auto" boxShadow="lg"
-                                >
-                                    {isSearching && <Flex justify="center" p={4}><Spinner size="md"/></Flex>}
-                                    {!isSearching && (
-                                        <List spacing={0}>
-                                            {suggestions.map((s) => (
-                                                <ListItem
-                                                    key={s.symbol}
-                                                    onMouseDown={() => handleSuggestionClick(s.symbol)}
-                                                    px={4} py={2} cursor="pointer"
-                                                    borderBottomWidth="1px" borderColor="var(--border-dynamic, var(--border-color))"
-                                                    _last={{ borderBottomWidth: 0 }}
-                                                    _hover={{ background: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))' }}
-                                                >
-                                                    <Text as="strong" color="var(--text-primary-dynamic, var(--text-primary))">{s.symbol}</Text>
-                                                    <Text as="span" ml={2} color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="sm">{s.name}</Text>
-                                                </ListItem>
-                                            ))}
-                                        </List>
-                                    )}
-                                </Box>
-                            )}
-                        </Box>
-                    </AccordionPanel>
-                 </AccordionItem>
 
                 <AccordionItem border="none">
                     <h2 id="holdings-section">
