@@ -4,38 +4,46 @@
 # In a real-world scenario, this would come from a comprehensive API or database.
 SECTOR_MAPPING = {
     # US Tech
-    "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology", "TSLA": "Consumer Discretionary",
+    "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Technology", "TSLA": "Consumer Discretionary", "NVDA": "Technology", "AMD": "Technology", "AMZN": "Consumer Discretionary",
     # Indian IT
-    "TCS.NS": "Technology", "INFY.NS": "Technology", "TATA-DIGITAL": "Technology", "ICICI-TECH": "Technology",
+    "TCS.NS": "Technology", "INFY.NS": "Technology", "TATA-DIGITAL": "Technology", "ICICI-TECH": "Technology", "HCLTECH.NS": "Technology", "WIPRO.NS": "Technology",
     # Indian Banking/Financials
-    "HDFCBANK.NS": "Financials", "BANKBEES.NS": "Financials",
+    "HDFCBANK.NS": "Financials", "BANKBEES.NS": "Financials", "ICICIBANK.NS": "Financials", "SBIN.NS": "Financials", "KOTAKBANK.NS": "Financials",
     # Indian FMCG
-    "HINDUNILVR.NS": "Consumer Staples", "ITC.NS": "Consumer Staples",
-    # Indian Conglomerate
-    "RELIANCE.NS": "Energy",
+    "HINDUNILVR.NS": "Consumer Staples", "ITC.NS": "Consumer Staples", "NESTLEIND.NS": "Consumer Staples",
+    # Energy/Conglomerate
+    "RELIANCE.NS": "Energy", "ONGC.NS": "Energy",
     # Pharma
-    "JNJ": "Healthcare",
-    # Consumer Goods
-    "PG": "Consumer Staples",
+    "JNJ": "Healthcare", "SUNPHARMA.NS": "Healthcare", "DRREDDY.NS": "Healthcare",
     # Index/Diversified Funds
     "NIFTYBEES.NS": "Diversified", "JUNIORBEES.NS": "Diversified", "UTINIFTY": "Diversified",
-    "PARA-FLEXI": "Diversified", "VTSAX-SIM": "Diversified",
+    "PARA-FLEXI": "Diversified", "VTSAX-SIM": "Diversified", "MON100.NS": "Diversified",
     # Gold (Commodity)
     "GOLDBEES.NS": "Commodity",
-    # Others
-    "LIQUIDBEES.NS": "Debt",
+    # Debt/Bonds
+    "LIQUIDBEES.NS": "Debt", "GSEC.NS": "Debt",
 }
 
 def get_sector(symbol):
-    return SECTOR_MAPPING.get(symbol.upper(), "Other") # Default to 'Other' if not found
+    return SECTOR_MAPPING.get(symbol.upper(), "Other") 
 
 def calculate_diversification_score(portfolio, investment_details):
     if not portfolio or not investment_details:
-        return {"score": 0, "feedback": "Invest in at least 3-5 assets to get a score.", "color": "#E53E3E"}
+        return {
+            "score": 0, 
+            "feedback": "Start investing to see your diversification score.", 
+            "color": "#E53E3E",
+            "suggestions": ["Make your first trade to get started!"]
+        }
 
     total_value = sum(detail['live_value_inr'] for detail in investment_details.values())
     if total_value == 0:
-        return {"score": 0, "feedback": "Invest in at least 3-5 assets to get a score.", "color": "#E53E3E"}
+        return {
+            "score": 0, 
+            "feedback": "Portfolio value is zero.", 
+            "color": "#E53E3E",
+            "suggestions": ["Invest in assets to build value."]
+        }
 
     # --- 1. Asset Count Score (Max 30 points) ---
     num_assets = len(portfolio)
@@ -68,8 +76,8 @@ def calculate_diversification_score(portfolio, investment_details):
         value = investment_details.get(inv.id, {}).get('live_value_inr', 0)
         sector_values[sector] = sector_values.get(sector, 0) + value
 
-    sector_weights = [value / total_value for value in sector_values.values()]
-    max_sector_weight = max(sector_weights) if sector_weights else 0
+    sector_weights = {sector: (value / total_value) for sector, value in sector_values.items()}
+    max_sector_weight = max(sector_weights.values()) if sector_weights else 0
 
     if max_sector_weight > 0.6:
         sector_score = 5
@@ -81,14 +89,53 @@ def calculate_diversification_score(portfolio, investment_details):
     # --- Final Score Calculation ---
     final_score = asset_count_score + concentration_score + sector_score
     
+    # --- Generate Smart Suggestions ---
+    suggestions = []
+    
+    # Asset Count Logic
+    if num_assets < 3:
+        suggestions.append("📉 Your portfolio is very small. Consider adding at least 2-3 more distinct assets.")
+    
+    # Concentration Logic
+    if max_weight > 0.40:
+        suggestions.append("⚠️ You are heavily reliant on one single asset. Consider trimming it to reduce risk.")
+        
+    # Sector Logic
+    tech_weight = sector_weights.get("Technology", 0)
+    if tech_weight > 0.40:
+        suggestions.append(f"💻 Your portfolio is heavy in IT ({int(tech_weight*100)}%). Consider adding defensive sectors like FMCG or Pharma.")
+        
+    fin_weight = sector_weights.get("Financials", 0)
+    if fin_weight > 0.40:
+         suggestions.append(f"🏦 You have high exposure to Banks ({int(fin_weight*100)}%). Diversify into other sectors.")
+
+    # Missing Asset Classes
+    if "Commodity" not in sector_weights:
+        suggestions.append("🥇 You have no Gold exposure. Adding Gold (e.g., GOLDBEES) can hedge against market crashes.")
+        
+    if "Debt" not in sector_weights:
+        suggestions.append("🛡️ You have no Debt/Bonds. Adding Liquid Funds (e.g., LIQUIDBEES) adds stability.")
+
+    if "Diversified" not in sector_weights and num_assets < 5:
+        suggestions.append("🌏 Consider adding an Index Fund (e.g., NIFTYBEES) for instant broad market exposure.")
+
+    if not suggestions:
+        suggestions.append("✅ Your portfolio looks well-balanced! Keep monitoring your allocation periodically.")
+
+    # Feedback Text
     if final_score < 40:
-        feedback = "Highly Concentrated. Consider adding more assets and diversifying across sectors."
+        feedback = "High Risk / Concentrated"
         color = "#E53E3E" # Red
     elif final_score < 75:
-        feedback = "Moderately Diversified. Good start, but watch for over-concentration in one asset or sector."
+        feedback = "Moderately Diversified"
         color = "#DD6B20" # Orange
     else:
-        feedback = "Well Diversified. Your portfolio is spread nicely across multiple assets and sectors."
+        feedback = "Excellent Diversification"
         color = "#48BB78" # Green
 
-    return {"score": final_score, "feedback": feedback, "color": color}
+    return {
+        "score": final_score, 
+        "feedback": feedback, 
+        "color": color,
+        "suggestions": suggestions[:4] # Return top 4 suggestions
+    }

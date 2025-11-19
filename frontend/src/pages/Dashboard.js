@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-// --- CHANGED: Added getWatchlist to imports
 import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
 import { searchStocks } from '../api/stocksApi';
 import StockCard from '../components/StockCard';
@@ -12,22 +11,21 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import Badges from '../components/Badges';
 import NewsTicker from '../components/NewsTicker';
 import Joyride, { STATUS } from 'react-joyride';
-// --- CHANGED: Added useWebSocket to get live prices for watchlist
 import { useWebSocket } from '../context/WebSocketContext';
 import {
   Box, Container, Flex, Heading, Text, SimpleGrid,
   Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon,
-  Input, List, ListItem, Spinner, Skeleton, Tag, TagLabel
+  Input, List, ListItem, Spinner, Skeleton, Tag
 } from '@chakra-ui/react';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Diversification Score Card using Chakra
+// --- CHANGED: Updated Card to show Smart Suggestions ---
 const DiversificationScoreCard = ({ scoreData }) => {
     if (!scoreData) {
         return <Skeleton height="120px" mb={8} borderRadius="lg" />;
     }
-    const { score, feedback, color } = scoreData;
+    const { score, feedback, color, suggestions } = scoreData;
 
     return (
         <Box
@@ -39,24 +37,32 @@ const DiversificationScoreCard = ({ scoreData }) => {
             borderLeftColor={color || 'gray.500'}
             boxShadow="md"
         >
-            <Flex justify="space-between" align="center">
-                <Box>
-                    <Heading size="md" mb={1}>Portfolio Diversification Score</Heading>
-                    <Text color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="sm">{feedback}</Text>
-                </Box>
-                {score !== 'N/A' ? (
-                    <Text fontSize="3xl" fontWeight="bold" color={color || 'gray.500'}>
-                        {score}/100
+            <Flex justify="space-between" align="start" wrap="wrap" gap={4}>
+                <Box flex="1">
+                    <Heading size="md" mb={1}>Portfolio Health: <span style={{color: color}}>{feedback}</span></Heading>
+                    <Text fontSize="3xl" fontWeight="bold" color={color || 'gray.500'} mb={2}>
+                        {score !== 'N/A' ? `${score}/100` : 'N/A'}
                     </Text>
-                ) : (
-                    <Text fontSize="xl" fontWeight="bold" color="var(--text-secondary-dynamic, var(--text-secondary))">N/A</Text>
-                )}
+                    
+                    {/* Render Specific Suggestions */}
+                    {suggestions && suggestions.length > 0 && (
+                        <Box mt={3}>
+                            <Text fontWeight="bold" fontSize="sm" color="var(--text-secondary-dynamic)" mb={1}>AI Suggestions:</Text>
+                            <List spacing={1}>
+                                {suggestions.map((s, i) => (
+                                    <ListItem key={i} fontSize="sm" display="flex" alignItems="center">
+                                        <span style={{marginRight: '8px'}}>•</span> {s}
+                                    </ListItem>
+                                ))}
+                            </List>
+                        </Box>
+                    )}
+                </Box>
             </Flex>
         </Box>
     );
 };
 
-// Dashboard Skeleton using Chakra Skeletons
 const DashboardSkeleton = () => (
     <Container maxW="container.xl">
         <Flex justify="space-between" align="center" mb={8}>
@@ -69,9 +75,7 @@ const DashboardSkeleton = () => (
                 <Skeleton height="30px" width="250px" />
             </Box>
         </Flex>
-        <Skeleton height="120px" mb={8} borderRadius="lg"/>
         <Skeleton height="150px" mb={8} borderRadius="lg"/>
-        <Skeleton height="60px" mb={8} borderRadius="lg"/>
         <Skeleton height="40px" width="200px" mb={4} />
         <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
            <Skeleton height="250px" borderRadius="lg"/>
@@ -84,11 +88,10 @@ const DashboardSkeleton = () => (
 function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    // --- CHANGED: Get livePrices from WebSocket
     const { livePrices } = useWebSocket();
     
     const [portfolio, setPortfolio] = useState([]);
-    const [watchlist, setWatchlist] = useState([]); // --- CHANGED: New state for watchlist
+    const [watchlist, setWatchlist] = useState([]); 
     const [chartData, setChartData] = useState(null);
     const [livePortfolioValue, setLivePortfolioValue] = useState(null);
     const [transactions, setTransactions] = useState([]);
@@ -134,7 +137,6 @@ function Dashboard() {
         setPortfolioError(''); setLiveValueError(''); setTransactionsError(''); setDiversificationScore(null);
 
         try {
-            // --- CHANGED: Added getWatchlist(user.id) to the Promise.all
             const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes] = await Promise.all([
                 getPortfolio(user.id), 
                 getPortfolioLiveValue(user.id),
@@ -178,8 +180,6 @@ function Dashboard() {
             else { setTransactionsError('Could not load transactions.'); setTransactions([]); }
 
             setDiversificationScore(diversificationRes);
-            
-            // --- CHANGED: Set watchlist state
             if (watchlistRes) { setWatchlist(watchlistRes); }
 
         } catch (error) {
@@ -247,14 +247,7 @@ function Dashboard() {
                  </Box>
             </SimpleGrid>
 
-            <Box 
-                id="stock-checker-box"
-                mb={6} 
-                bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" 
-                p={6} 
-                borderRadius="lg" 
-                boxShadow="md"
-            >
+            <Box id="stock-checker-box" mb={6} bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={6} borderRadius="lg" boxShadow="md">
                 <Heading size="md" mb={4}>Stock Checker</Heading>
                 <Text mb={4}>Enter a stock symbol or company name to search.</Text>
                 <Box position="relative" zIndex={50}> 
@@ -295,7 +288,6 @@ function Dashboard() {
                 </Box>
             </Box>
 
-            {/* --- CHANGED: New Watchlist Section --- */}
             <Box id="watchlist-section" mb={6}>
                 <Heading size="md" mb={4}>Your Watchlist</Heading>
                 {watchlist.length === 0 ? (
@@ -303,8 +295,7 @@ function Dashboard() {
                 ) : (
                     <SimpleGrid columns={[2, 3, 4, 5]} spacing={4}>
                         {watchlist.map((symbol) => {
-                            const price = livePrices[symbol]; // Get real-time price from WebSocket context
-                            const isPositive = true; // We could calc change if we had prev price, defaulting style
+                            const price = livePrices[symbol]; 
                             return (
                                 <Box 
                                     key={symbol} 
@@ -327,7 +318,6 @@ function Dashboard() {
                     </SimpleGrid>
                 )}
             </Box>
-            {/* --- END Watchlist Section --- */}
 
             <Accordion allowMultiple defaultIndex={[0, 1]}>
                 <AccordionItem mb={6} border="none">

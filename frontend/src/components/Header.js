@@ -2,8 +2,8 @@
 import React from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Box, Flex, Link, Button, Heading, Spacer, HStack } from '@chakra-ui/react';
-import ThemeSelector from './ThemeSelector'; // Import the new component
+import { Flex, Link, Button, Heading, Spacer, HStack } from '@chakra-ui/react';
+import ThemeSelector from './ThemeSelector'; 
 
 function Header() {
   const { isAuthenticated, logout } = useAuth();
@@ -19,13 +19,13 @@ function Header() {
       as="header"
       align="center"
       justify="space-between"
-      wrap="wrap" // Allows wrapping on small screens if needed
-      p={[3, 6]} // Responsive padding (less on mobile, more on desktop)
-      bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" // Dynamic background
+      wrap="wrap" 
+      p={[3, 6]} 
+      bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" 
       borderBottomWidth="1px"
-      borderColor="var(--border-dynamic, var(--border-color))" // Dynamic border
-      color="var(--text-primary-dynamic, var(--text-primary))" // Dynamic text
-      boxShadow="sm" // Add subtle shadow
+      borderColor="var(--border-dynamic, var(--border-color))" 
+      color="var(--text-primary-dynamic, var(--text-primary))" 
+      boxShadow="sm" 
     >
       <Heading as="h1" size="lg" letterSpacing={'-.1rem'}>
         <Link as={RouterLink} to={isAuthenticated ? "/dashboard" : "/"} _hover={{ textDecoration: 'none' }}>
@@ -33,22 +33,23 @@ function Header() {
         </Link>
       </Heading>
 
-      <Spacer /> {/* Pushes navigation to the right */}
+      <Spacer /> 
 
-      <HStack spacing={4} align="center"> {/* Use HStack for horizontal layout */}
+      <HStack spacing={4} align="center"> 
         {isAuthenticated ? (
           <>
-             {/* Use Chakra Links */}
             <Link as={RouterLink} to="/dashboard" fontWeight="600">Dashboard</Link>
             <Link as={RouterLink} to="/etfs" fontWeight="600">ETFs</Link>
             <Link as={RouterLink} to="/mutual-funds" fontWeight="600">Mutual Funds</Link>
-            <Link as={RouterLink} to="/risk-profile" fontWeight="600">Risk Quiz</Link>
+            {/* --- ADDED LINK HERE --- */}
+            <Link as={RouterLink} to="/sip-calculator" fontWeight="600">SIP Calc</Link>
+            
             <Link as={RouterLink} to="/tax-optimizer" fontWeight="600">Tax Optimizer</Link>
             <Link as={RouterLink} to="/transactions" fontWeight="600">Transactions</Link>
             <Link as={RouterLink} to="/learn" fontWeight="600">Learn</Link>
             <Link as={RouterLink} to="/leaderboard" fontWeight="600">Leaderboard</Link>
-            <ThemeSelector /> {/* Add Theme Selector */}
-            <Button size="sm" onClick={handleLogout} colorScheme="red"> {/* Use Chakra Button */}
+            <ThemeSelector /> 
+            <Button size="sm" onClick={handleLogout} colorScheme="red"> 
               Log Out
             </Button>
           </>
@@ -56,8 +57,8 @@ function Header() {
           <>
             <Link as={RouterLink} to="/learn" fontWeight="600">Learn</Link>
             <Link as={RouterLink} to="/login" fontWeight="600">Log In</Link>
-            <ThemeSelector /> {/* Add Theme Selector */}
-            <Button size="sm" onClick={() => navigate('/signup')}> {/* Use Chakra Button */}
+            <ThemeSelector /> 
+            <Button size="sm" onClick={() => navigate('/signup')}> 
               Sign Up
             </Button>
           </>
