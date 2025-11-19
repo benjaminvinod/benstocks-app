@@ -1,3 +1,4 @@
+// src/pages/StockDetails.js
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { getStockPrice } from "../api/stocks";
@@ -90,10 +91,10 @@ const FinancialsSnapshot = ({ stockData }) => {
         <div style={{ marginTop: '2rem' }}>
             <h2>Financial Snapshot (Annual)</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {revenue !== null && <Stat label="Total Revenue" value={formatLargeNumber(revenue)} tooltipText="Total sales from goods and services (last fiscal year)." />}
-                {net_income !== null && <Stat label="Net Income" value={formatLargeNumber(net_income)} tooltipText="Company's profit after all expenses (last fiscal year)." />}
-                {total_debt !== null && <Stat label="Total Debt" value={formatLargeNumber(total_debt)} tooltipText="Total money the company owes (last reported)." />}
-                {free_cash_flow !== null && <Stat label="Free Cash Flow" value={formatLargeNumber(free_cash_flow)} tooltipText="Cash left after paying for operations and investments." />}
+                <Stat label="Total Revenue" value={formatLargeNumber(revenue)} tooltipText="Total sales from goods and services (last fiscal year)." />
+                <Stat label="Net Income" value={formatLargeNumber(net_income)} tooltipText="Company's profit after all expenses (last fiscal year)." />
+                <Stat label="Total Debt" value={formatLargeNumber(total_debt)} tooltipText="Total money the company owes (last reported)." />
+                <Stat label="Free Cash Flow" value={formatLargeNumber(free_cash_flow)} tooltipText="Cash left after paying for operations and investments." />
             </div>
         </div>
     );
@@ -264,11 +265,31 @@ function StockDetails() {
 
             <h2>Key Metrics</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <Stat label="Market Cap" value={formatLargeNumber(stockData.market_cap)} />
-                <Stat label="P/E Ratio" value={stockData.pe_ratio !== null ? stockData.pe_ratio.toFixed(2) : 'N/A'} />
-                <Stat label="Dividend Yield" value={stockData.dividend_yield !== null ? (stockData.dividend_yield * 100).toFixed(2) + '%' : 'N/A'} />
-                <Stat label="52-Week High" value={formatCurrency(stockData.week_52_high, currencyCode)} />
-                <Stat label="52-Week Low" value={formatCurrency(stockData.week_52_low, currencyCode)} />
+                <Stat 
+                    label="Market Cap" 
+                    value={formatLargeNumber(stockData.market_cap)} 
+                    tooltipText="Total value of all a company's shares of stock."
+                />
+                <Stat 
+                    label="P/E Ratio" 
+                    value={stockData.pe_ratio !== null ? stockData.pe_ratio.toFixed(2) : 'N/A'} 
+                    tooltipText="Ratio of a company's share price to its earnings per share."
+                />
+                <Stat 
+                    label="Dividend Yield" 
+                    value={stockData.dividend_yield !== null ? (stockData.dividend_yield * 100).toFixed(2) + '%' : 'N/A'} 
+                    tooltipText="Annual dividend payment as a percentage of the stock's current price."
+                />
+                <Stat 
+                    label="52-Week High" 
+                    value={formatCurrency(stockData.week_52_high, currencyCode)} 
+                    tooltipText="The highest price a stock has traded at in the last year."
+                />
+                <Stat 
+                    label="52-Week Low" 
+                    value={formatCurrency(stockData.week_52_low, currencyCode)} 
+                    tooltipText="The lowest price a stock has traded at in the last year."
+                />
             </div>
             
             <FinancialsSnapshot stockData={stockData} />
