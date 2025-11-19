@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore } from '../api/portfolio';
+// --- CHANGED: Added getWatchlist to imports
+import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
 import { searchStocks } from '../api/stocksApi';
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
@@ -11,10 +12,12 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import Badges from '../components/Badges';
 import NewsTicker from '../components/NewsTicker';
 import Joyride, { STATUS } from 'react-joyride';
+// --- CHANGED: Added useWebSocket to get live prices for watchlist
+import { useWebSocket } from '../context/WebSocketContext';
 import {
   Box, Container, Flex, Heading, Text, SimpleGrid,
   Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon,
-  Input, List, ListItem, Spinner, Skeleton,
+  Input, List, ListItem, Spinner, Skeleton, Tag, TagLabel
 } from '@chakra-ui/react';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -81,7 +84,11 @@ const DashboardSkeleton = () => (
 function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
+    // --- CHANGED: Get livePrices from WebSocket
+    const { livePrices } = useWebSocket();
+    
     const [portfolio, setPortfolio] = useState([]);
+    const [watchlist, setWatchlist] = useState([]); // --- CHANGED: New state for watchlist
     const [chartData, setChartData] = useState(null);
     const [livePortfolioValue, setLivePortfolioValue] = useState(null);
     const [transactions, setTransactions] = useState([]);
@@ -100,6 +107,7 @@ function Dashboard() {
     const tourSteps = [
         { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
         { target: '#stock-checker-box', content: 'Search for any stock here to see its details and historical performance.' },
+        { target: '#watchlist-section', content: 'Stocks you follow will appear here for quick access.' },
         { target: '#holdings-section', content: 'Your purchased investments will appear in this section.' },
         { target: '#news-ticker', content: 'Check out the latest financial news to help inform your investment decisions.' },
     ];
@@ -126,9 +134,13 @@ function Dashboard() {
         setPortfolioError(''); setLiveValueError(''); setTransactionsError(''); setDiversificationScore(null);
 
         try {
-            const [portfolioRes, liveValueRes, transactionsRes, diversificationRes] = await Promise.all([
-                getPortfolio(user.id), getPortfolioLiveValue(user.id),
-                getTransactions(user.id), getDiversificationScore(user.id)
+            // --- CHANGED: Added getWatchlist(user.id) to the Promise.all
+            const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes] = await Promise.all([
+                getPortfolio(user.id), 
+                getPortfolioLiveValue(user.id),
+                getTransactions(user.id), 
+                getDiversificationScore(user.id),
+                getWatchlist(user.id)
             ]);
 
             if (portfolioRes && portfolioRes.investments) {
@@ -137,18 +149,15 @@ function Dashboard() {
                      if (holdings[inv.symbol]) {
                          holdings[inv.symbol].quantity += inv.quantity;
                          holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
-                         // Accumulate total cost in ORIGINAL currency
                          holdings[inv.symbol].total_cost_original += (inv.quantity * inv.buy_price);
                      } else { 
                         holdings[inv.symbol] = { 
                             ...inv,
-                            // Initialize total cost in ORIGINAL currency
                             total_cost_original: inv.quantity * inv.buy_price 
                         }; 
                     }
                  });
                  const consolidatedPortfolio = Object.values(holdings).map(holding => {
-                     // Calculate average using the original currency totals
                      const average_buy_price = holding.quantity > 0 ? holding.total_cost_original / holding.quantity : 0;
                      return { ...holding, buy_price: average_buy_price };
                  });
@@ -169,6 +178,9 @@ function Dashboard() {
             else { setTransactionsError('Could not load transactions.'); setTransactions([]); }
 
             setDiversificationScore(diversificationRes);
+            
+            // --- CHANGED: Set watchlist state
+            if (watchlistRes) { setWatchlist(watchlistRes); }
 
         } catch (error) {
             console.error("Failed fetch dashboard data:", error);
@@ -235,8 +247,6 @@ function Dashboard() {
                  </Box>
             </SimpleGrid>
 
-            {/* --- FIXED: MOVED STOCK CHECKER OUTSIDE ACCORDION --- */}
-            {/* This separate box ensures the dropdown is never hidden/clipped */}
             <Box 
                 id="stock-checker-box"
                 mb={6} 
@@ -247,7 +257,7 @@ function Dashboard() {
             >
                 <Heading size="md" mb={4}>Stock Checker</Heading>
                 <Text mb={4}>Enter a stock symbol or company name to search.</Text>
-                <Box position="relative" zIndex={50}> {/* High Z-Index so dropdown floats over Accordion */}
+                <Box position="relative" zIndex={50}> 
                     <Input
                         id="stock-checker-form"
                         placeholder="e.g., AAPL or Reliance"
@@ -284,7 +294,40 @@ function Dashboard() {
                     )}
                 </Box>
             </Box>
-            {/* --- END FIXED SECTION --- */}
+
+            {/* --- CHANGED: New Watchlist Section --- */}
+            <Box id="watchlist-section" mb={6}>
+                <Heading size="md" mb={4}>Your Watchlist</Heading>
+                {watchlist.length === 0 ? (
+                    <Text color="var(--text-secondary-dynamic, var(--text-secondary))">You haven't added any stocks to your watchlist yet.</Text>
+                ) : (
+                    <SimpleGrid columns={[2, 3, 4, 5]} spacing={4}>
+                        {watchlist.map((symbol) => {
+                            const price = livePrices[symbol]; // Get real-time price from WebSocket context
+                            const isPositive = true; // We could calc change if we had prev price, defaulting style
+                            return (
+                                <Box 
+                                    key={symbol} 
+                                    bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" 
+                                    p={4} 
+                                    borderRadius="lg" 
+                                    border="1px solid var(--border-dynamic, var(--border-color))"
+                                    cursor="pointer"
+                                    _hover={{ borderColor: 'var(--brand-primary-dynamic, var(--brand-primary))', transform: 'translateY(-2px)' }}
+                                    transition="all 0.2s"
+                                    onClick={() => navigate(`/stock/${symbol}`)}
+                                >
+                                    <Text fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{symbol}</Text>
+                                    <Text fontSize="lg" mt={1}>
+                                        {price ? formatCurrency(price, symbol.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}
+                                    </Text>
+                                </Box>
+                            );
+                        })}
+                    </SimpleGrid>
+                )}
+            </Box>
+            {/* --- END Watchlist Section --- */}
 
             <Accordion allowMultiple defaultIndex={[0, 1]}>
                 <AccordionItem mb={6} border="none">
