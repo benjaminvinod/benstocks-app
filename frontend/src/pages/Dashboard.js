@@ -6,8 +6,8 @@ import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificatio
 import { searchStocks } from '../api/stocksApi';
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
-import { Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { Pie, Line } from 'react-chartjs-2'; // --- ADDED: Line
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title } from 'chart.js';
 import Badges from '../components/Badges';
 import NewsTicker from '../components/NewsTicker';
 import Joyride, { STATUS } from 'react-joyride';
@@ -15,12 +15,12 @@ import { useWebSocket } from '../context/WebSocketContext';
 import {
   Box, Container, Flex, Heading, Text, SimpleGrid,
   Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon,
-  Input, List, ListItem, Spinner, Skeleton, Tag
+  Input, List, ListItem, Spinner, Skeleton
 } from '@chakra-ui/react';
 
-ChartJS.register(ArcElement, Tooltip, Legend);
+// --- ADDED: Register Line Chart components
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title);
 
-// --- CHANGED: Updated Card to show Smart Suggestions ---
 const DiversificationScoreCard = ({ scoreData }) => {
     if (!scoreData) {
         return <Skeleton height="120px" mb={8} borderRadius="lg" />;
@@ -44,7 +44,6 @@ const DiversificationScoreCard = ({ scoreData }) => {
                         {score !== 'N/A' ? `${score}/100` : 'N/A'}
                     </Text>
                     
-                    {/* Render Specific Suggestions */}
                     {suggestions && suggestions.length > 0 && (
                         <Box mt={3}>
                             <Text fontWeight="bold" fontSize="sm" color="var(--text-secondary-dynamic)" mb={1}>AI Suggestions:</Text>
@@ -65,20 +64,8 @@ const DiversificationScoreCard = ({ scoreData }) => {
 
 const DashboardSkeleton = () => (
     <Container maxW="container.xl">
-        <Flex justify="space-between" align="center" mb={8}>
-            <Box>
-                <Skeleton height="40px" width="250px" mb={2} />
-                <Skeleton height="20px" width="300px" />
-            </Box>
-            <Box textAlign="right">
-                <Skeleton height="20px" width="200px" mb={2} />
-                <Skeleton height="30px" width="250px" />
-            </Box>
-        </Flex>
-        <Skeleton height="150px" mb={8} borderRadius="lg"/>
-        <Skeleton height="40px" width="200px" mb={4} />
-        <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
-           <Skeleton height="250px" borderRadius="lg"/>
+        <Skeleton height="200px" mb={8} borderRadius="lg"/>
+        <SimpleGrid columns={[1, null, 2]} spacing={6}>
            <Skeleton height="250px" borderRadius="lg"/>
            <Skeleton height="250px" borderRadius="lg"/>
         </SimpleGrid>
@@ -93,13 +80,12 @@ function Dashboard() {
     const [portfolio, setPortfolio] = useState([]);
     const [watchlist, setWatchlist] = useState([]); 
     const [chartData, setChartData] = useState(null);
+    const [historyChartData, setHistoryChartData] = useState(null); // --- ADDED: History Data
     const [livePortfolioValue, setLivePortfolioValue] = useState(null);
     const [transactions, setTransactions] = useState([]);
     const [investmentDetails, setInvestmentDetails] = useState({});
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [portfolioError, setPortfolioError] = useState('');
-    const [liveValueError, setLiveValueError] = useState('');
-    const [transactionsError, setTransactionsError] = useState('');
     const [symbol, setSymbol] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
@@ -108,11 +94,10 @@ function Dashboard() {
     const [diversificationScore, setDiversificationScore] = useState(null);
 
     const tourSteps = [
-        { target: '#cash-balance', content: 'This is your starting cash balance. Use it to buy stocks, ETFs, and mutual funds!' },
-        { target: '#stock-checker-box', content: 'Search for any stock here to see its details and historical performance.' },
-        { target: '#watchlist-section', content: 'Stocks you follow will appear here for quick access.' },
-        { target: '#holdings-section', content: 'Your purchased investments will appear in this section.' },
-        { target: '#news-ticker', content: 'Check out the latest financial news to help inform your investment decisions.' },
+        { target: '#cash-balance', content: 'This is your starting cash balance.' },
+        { target: '#portfolio-history', content: 'Track your total net worth growth over time here.' }, // --- ADDED
+        { target: '#stock-checker-box', content: 'Search for any stock here.' },
+        { target: '#holdings-section', content: 'Your purchased investments appear here.' },
     ];
 
     useEffect(() => {
@@ -124,8 +109,7 @@ function Dashboard() {
 
     const handleJoyrideCallback = (data) => {
         const { status } = data;
-        const finishedStatuses = [STATUS.FINISHED, STATUS.SKIPPED];
-        if (finishedStatuses.includes(status)) {
+        if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
             setRunTour(false);
             localStorage.setItem('benstocks_tour_complete', 'true');
         }
@@ -134,8 +118,7 @@ function Dashboard() {
     const fetchDashboardData = useCallback(async () => {
         if (!user?.id) return;
         setIsInitialLoading(true);
-        setPortfolioError(''); setLiveValueError(''); setTransactionsError(''); setDiversificationScore(null);
-
+        
         try {
             const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes] = await Promise.all([
                 getPortfolio(user.id), 
@@ -145,6 +128,7 @@ function Dashboard() {
                 getWatchlist(user.id)
             ]);
 
+            // Process Portfolio & Allocation Chart
             if (portfolioRes && portfolioRes.investments) {
                  const holdings = {};
                  portfolioRes.investments.forEach(inv => {
@@ -153,10 +137,7 @@ function Dashboard() {
                          holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
                          holdings[inv.symbol].total_cost_original += (inv.quantity * inv.buy_price);
                      } else { 
-                        holdings[inv.symbol] = { 
-                            ...inv,
-                            total_cost_original: inv.quantity * inv.buy_price 
-                        }; 
+                        holdings[inv.symbol] = { ...inv, total_cost_original: inv.quantity * inv.buy_price }; 
                     }
                  });
                  const consolidatedPortfolio = Object.values(holdings).map(holding => {
@@ -171,23 +152,35 @@ function Dashboard() {
                      const backgroundColors = labels.map(() => `hsla(${Math.random() * 360}, 70%, 70%, 0.6)`);
                      setChartData({ labels, datasets: [{ label: 'Allocation (Cost)', data, backgroundColor: backgroundColors }] });
                  } else { setChartData(null); }
-            } else { setPortfolioError('Could not load portfolio.'); setPortfolio([]); setChartData(null); }
+            }
+
+            // --- ADDED: Process History Chart ---
+            // Check if liveValueRes has history (it should from our backend update)
+            const historyData = liveValueRes.history || [];
+            if (historyData.length > 0) {
+                setHistoryChartData({
+                    labels: historyData.map(h => h.date),
+                    datasets: [
+                        {
+                            label: 'Net Worth (INR)',
+                            data: historyData.map(h => h.total_net_worth),
+                            borderColor: '#48BB78',
+                            backgroundColor: 'rgba(72, 187, 120, 0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }
+                    ]
+                });
+            }
 
             if (liveValueRes) { setLivePortfolioValue(liveValueRes); setInvestmentDetails(liveValueRes.investment_details || {}); }
-            else { setLiveValueError('Could not load live values.'); setInvestmentDetails({}); }
-
             if (transactionsRes) { setTransactions(transactionsRes); }
-            else { setTransactionsError('Could not load transactions.'); setTransactions([]); }
-
             setDiversificationScore(diversificationRes);
             if (watchlistRes) { setWatchlist(watchlistRes); }
 
         } catch (error) {
             console.error("Failed fetch dashboard data:", error);
             setPortfolioError("Error fetching dashboard data.");
-            setPortfolio([]); setChartData(null); setLivePortfolioValue(null);
-            setInvestmentDetails({}); setTransactions([]);
-            setDiversificationScore({ score: 'N/A', feedback: 'Error fetching data.', color: '#A0AEC0' });
         } finally { setIsInitialLoading(false); }
     }, [user]);
 
@@ -225,7 +218,7 @@ function Dashboard() {
                     </Text>
                 </Box>
                 <Box textAlign="right">
-                    {liveValueError ? <Text color="red.500">{liveValueError}</Text> : livePortfolioValue ? (
+                    {livePortfolioValue ? (
                         <>
                             <Text color="var(--text-secondary-dynamic, var(--text-secondary))">
                                 Investments Value: <Text as="span" fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{formatCurrency(livePortfolioValue.total_investment_value_inr, 'INR')}</Text>
@@ -240,16 +233,33 @@ function Dashboard() {
 
             <DiversificationScoreCard scoreData={diversificationScore} />
 
+            {/* --- ADDED: History Chart Section --- */}
+            <Box 
+                id="portfolio-history"
+                bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" 
+                p={6} 
+                borderRadius="lg" 
+                boxShadow="md"
+                mb={8}
+                height="350px"
+            >
+                <Heading size="md" mb={4}>Portfolio Performance</Heading>
+                {historyChartData ? (
+                     <Line data={historyChartData} options={{ maintainAspectRatio: false }} />
+                ) : (
+                    <Flex justify="center" align="center" h="100%">
+                        <Text color="gray.500">Graph will appear after 24 hours of activity.</Text>
+                    </Flex>
+                )}
+            </Box>
+
             <SimpleGrid columns={[1, null, 2]} spacing={8} mb={8}>
                 <Box id="news-ticker"><NewsTicker /></Box>
-                <Box>
-                    {transactionsError ? <Text color="red.500">Failed to load badges.</Text> : <Badges transactions={transactions} />}
-                 </Box>
+                <Box><Badges transactions={transactions} /></Box>
             </SimpleGrid>
 
             <Box id="stock-checker-box" mb={6} bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={6} borderRadius="lg" boxShadow="md">
                 <Heading size="md" mb={4}>Stock Checker</Heading>
-                <Text mb={4}>Enter a stock symbol or company name to search.</Text>
                 <Box position="relative" zIndex={50}> 
                     <Input
                         id="stock-checker-form"
@@ -274,11 +284,9 @@ function Dashboard() {
                                             onMouseDown={() => handleSuggestionClick(s.symbol)}
                                             px={4} py={2} cursor="pointer"
                                             borderBottomWidth="1px" borderColor="var(--border-dynamic, var(--border-color))"
-                                            _last={{ borderBottomWidth: 0 }}
                                             _hover={{ background: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))' }}
                                         >
-                                            <Text as="strong" color="var(--text-primary-dynamic, var(--text-primary))">{s.symbol}</Text>
-                                            <Text as="span" ml={2} color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="sm">{s.name}</Text>
+                                            <Text as="strong">{s.symbol}</Text> <Text as="span" fontSize="sm">{s.name}</Text>
                                         </ListItem>
                                     ))}
                                 </List>
@@ -291,7 +299,7 @@ function Dashboard() {
             <Box id="watchlist-section" mb={6}>
                 <Heading size="md" mb={4}>Your Watchlist</Heading>
                 {watchlist.length === 0 ? (
-                    <Text color="var(--text-secondary-dynamic, var(--text-secondary))">You haven't added any stocks to your watchlist yet.</Text>
+                    <Text color="gray.500">No stocks in watchlist.</Text>
                 ) : (
                     <SimpleGrid columns={[2, 3, 4, 5]} spacing={4}>
                         {watchlist.map((symbol) => {
@@ -308,10 +316,8 @@ function Dashboard() {
                                     transition="all 0.2s"
                                     onClick={() => navigate(`/stock/${symbol}`)}
                                 >
-                                    <Text fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{symbol}</Text>
-                                    <Text fontSize="lg" mt={1}>
-                                        {price ? formatCurrency(price, symbol.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}
-                                    </Text>
+                                    <Text fontWeight="bold">{symbol}</Text>
+                                    <Text fontSize="lg" mt={1}>{price ? formatCurrency(price, symbol.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}</Text>
                                 </Box>
                             );
                         })}
@@ -321,46 +327,18 @@ function Dashboard() {
 
             <Accordion allowMultiple defaultIndex={[0, 1]}>
                 <AccordionItem mb={6} border="none">
-                    <h2>
-                        <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
-                            <Box flex="1" textAlign="left">
-                                <Heading size="md">Portfolio Allocation (Buy Cost)</Heading>
-                            </Box>
-                            <AccordionIcon />
-                        </AccordionButton>
-                    </h2>
-                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" borderBottomRadius="lg" pt={4}>
-                        {portfolioError ? <Text color="red.500">{portfolioError}</Text> : chartData ? (
-                            <Box maxW="350px" mx="auto">
-                                <Pie data={chartData} options={{ responsive: true, plugins: { legend:{ display: true, position: 'top', labels: {color: 'var(--text-primary-dynamic, var(--text-primary))'} } } }} />
-                            </Box>
-                        ) : <Text>No investments yet to show allocation.</Text>}
+                    <h2><AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={4} borderRadius="lg"><Box flex="1" textAlign="left"><Heading size="md">Portfolio Allocation</Heading></Box><AccordionIcon /></AccordionButton></h2>
+                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" pt={4}>
+                         {chartData ? <Box maxW="350px" mx="auto"><Pie data={chartData} /></Box> : <Text>No data.</Text>}
                     </AccordionPanel>
                 </AccordionItem>
 
                 <AccordionItem border="none">
-                    <h2 id="holdings-section">
-                        <AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" _hover={{bg: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))'}} borderRadius="lg" p={4}>
-                            <Box flex="1" textAlign="left">
-                                <Heading size="md">Your Holdings</Heading>
-                            </Box>
-                            <AccordionIcon />
-                        </AccordionButton>
-                    </h2>
-                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" borderBottomRadius="lg" pt={4}>
-                        {portfolioError ? <Text color="red.500">{portfolioError}</Text> : portfolio.length === 0 ? <Text>You have no investments yet.</Text> : (
+                    <h2 id="holdings-section"><AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={4} borderRadius="lg"><Box flex="1" textAlign="left"><Heading size="md">Your Holdings</Heading></Box><AccordionIcon /></AccordionButton></h2>
+                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" pt={4}>
+                        {portfolio.length === 0 ? <Text>No investments.</Text> : (
                             <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
-                                {portfolio.map((inv) => {
-                                    const liveDetail = investmentDetails[inv.id];
-                                    return (
-                                        <StockCard
-                                            key={inv.symbol}
-                                            investment={inv}
-                                            fetchPortfolio={fetchDashboardData}
-                                            liveDetails={liveDetail}
-                                        />
-                                    );
-                                })}
+                                {portfolio.map((inv) => <StockCard key={inv.symbol} investment={inv} fetchPortfolio={fetchDashboardData} liveDetails={investmentDetails[inv.id]} />)}
                             </SimpleGrid>
                         )}
                     </AccordionPanel>

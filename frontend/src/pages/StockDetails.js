@@ -4,15 +4,16 @@ import { useParams } from "react-router-dom";
 import { getStockPrice } from "../api/stocks";
 import { buyInvestment, getWatchlist, addToWatchlist, removeFromWatchlist } from "../api/portfolio";
 import { useAuth } from "../context/AuthContext";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, formatLargeNumber } from "../utils/format";
 import BackButton from '../components/BackButton';
 import StockChart from "../components/StockChart";
 import { toast } from 'react-toastify';
 import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 import { useWebSocket } from '../context/WebSocketContext';
 import Tooltip from '../components/Tooltip';
-// --- CHANGED: Import hook
 import { useNumberFormat } from '../context/NumberFormatContext';
+// --- ADDED: Imports for Form
+import { Select, Input, FormControl, FormLabel, Box, Text } from '@chakra-ui/react';
 
 const Stat = ({ label, value, tooltipText }) => (
     <div style={{ flex: '1 1 150px', background: 'var(--bg-dark-primary)', padding: '1rem', borderRadius: '8px', minWidth: '150px' }}>
@@ -32,48 +33,24 @@ const Stat = ({ label, value, tooltipText }) => (
 
 const AnalystRating = ({ stockData }) => {
     const { recommendation, number_of_analysts, target_price, currency } = stockData;
-    if (!recommendation && !number_of_analysts) {
-        return null;
-    }
-
-    const getRatingColor = (rec) => {
-        if (!rec) return 'var(--text-primary)';
-        const lowerRec = rec.toLowerCase();
-        if (lowerRec.includes('buy') || lowerRec.includes('outperform')) return '#48BB78';
-        if (lowerRec.includes('hold') || lowerRec.includes('neutral') || lowerRec.includes('perform')) return '#A0AEC0';
-        if (lowerRec.includes('sell') || lowerRec.includes('underperform')) return '#E53E3E';
-        return 'var(--text-primary)';
-    };
+    if (!recommendation && !number_of_analysts) return null;
 
     const ratingText = recommendation ? recommendation.replace(/_/g, ' ').toUpperCase() : 'N/A';
-    const color = getRatingColor(ratingText);
-
+    
     return (
         <div style={{ marginTop: '2rem' }}>
             <h2>Analyst Consensus</h2>
             <div style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '1.5rem' }}>
                 {recommendation && (
                     <div>
-                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Overall Rating</p>
-                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold', color }}>
-                            {ratingText}
-                        </p>
-                    </div>
-                )}
-                {number_of_analysts > 0 && (
-                    <div>
-                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Number of Analysts</p>
-                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                            {number_of_analysts}
-                        </p>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Rating</p>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold', color: '#48BB78' }}>{ratingText}</p>
                     </div>
                 )}
                 {target_price && (
                     <div>
-                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Average Target Price</p>
-                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                            {formatCurrency(target_price, currency)}
-                        </p>
+                        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Target Price</p>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold' }}>{formatCurrency(target_price, currency)}</p>
                     </div>
                 )}
             </div>
@@ -81,10 +58,10 @@ const AnalystRating = ({ stockData }) => {
     );
 };
 
-// --- CHANGED: Financials now use formatNumber hook
 const FinancialsSnapshot = ({ stockData }) => {
     const { revenue, net_income, total_debt, free_cash_flow } = stockData;
-    const { formatNumber } = useNumberFormat(); // Hook
+    // Use global formatter
+    const { formatNumber } = useNumberFormat();
     
     const hasData = [revenue, net_income, total_debt, free_cash_flow].some(val => val !== null && typeof val !== 'undefined');
     if (!hasData) return null;
@@ -93,10 +70,10 @@ const FinancialsSnapshot = ({ stockData }) => {
         <div style={{ marginTop: '2rem' }}>
             <h2>Financial Snapshot (Annual)</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <Stat label="Total Revenue" value={formatNumber(revenue)} tooltipText="Total sales from goods and services (last fiscal year)." />
-                <Stat label="Net Income" value={formatNumber(net_income)} tooltipText="Company's profit after all expenses (last fiscal year)." />
-                <Stat label="Total Debt" value={formatNumber(total_debt)} tooltipText="Total money the company owes (last reported)." />
-                <Stat label="Free Cash Flow" value={formatNumber(free_cash_flow)} tooltipText="Cash left after paying for operations and investments." />
+                <Stat label="Total Revenue" value={formatNumber(revenue)} tooltipText="Total sales from goods and services." />
+                <Stat label="Net Income" value={formatNumber(net_income)} tooltipText="Profit after expenses." />
+                <Stat label="Total Debt" value={formatNumber(total_debt)} tooltipText="Total company debt." />
+                <Stat label="Free Cash Flow" value={formatNumber(free_cash_flow)} tooltipText="Cash remaining after operations." />
             </div>
         </div>
     );
@@ -106,14 +83,19 @@ function StockDetails() {
     const { symbol } = useParams();
     const { user, refreshUser } = useAuth();
     const { livePrices } = useWebSocket();
-    // --- CHANGED: Hook
+    // Use global formatter
     const { formatNumber } = useNumberFormat();
 
     const [stockData, setStockData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+    
+    // Buy Form State
     const [quantity, setQuantity] = useState(1);
+    const [orderType, setOrderType] = useState("MARKET"); 
+    const [limitPrice, setLimitPrice] = useState("");     
     const [buyLoading, setBuyLoading] = useState(false);
+    
     const [isWatchlisted, setIsWatchlisted] = useState(false);
     const [watchlistLoading, setWatchlistLoading] = useState(false);
 
@@ -130,17 +112,15 @@ function StockDetails() {
         const fetchAllData = async () => {
             setIsLoading(true);
             setError(null);
-            setStockData(null);
             try {
                 const stockRes = await getStockPrice(symbol);
                 if (stockRes.detail || stockRes.error) { throw new Error(stockRes.detail || stockRes.error); }
                 setStockData(stockRes);
+                if (stockRes.close) setLimitPrice(stockRes.close); 
 
                 if (user?.id) {
                     const watchlistRes = await getWatchlist(user.id);
-                    if (Array.isArray(watchlistRes)) {
-                        setIsWatchlisted(watchlistRes.includes(symbol.toUpperCase()));
-                    }
+                    if (Array.isArray(watchlistRes)) setIsWatchlisted(watchlistRes.includes(symbol.toUpperCase()));
                 }
             } catch (err) {
                 setError(err.message || "Could not fetch stock data.");
@@ -156,26 +136,39 @@ function StockDetails() {
         setBuyLoading(true);
         const currentPrice = stockData?.close;
         const buyQuantity = Number(quantity);
+        
         if (!currentPrice || currentPrice <= 0 || !buyQuantity || buyQuantity <= 0) {
-            toast.error("Invalid price or quantity. Please refresh.");
+            toast.error("Invalid price or quantity.");
             setBuyLoading(false);
             return;
         }
+
+        // Client-side check for Limit Orders (Immediate or Cancel simulation)
+        if (orderType === "LIMIT" && Number(limitPrice) < currentPrice) {
+             toast.error(`Limit Order Error: Current price ${currentPrice} is higher than your limit ${limitPrice}. Order rejected.`);
+             setBuyLoading(false);
+             return;
+        }
+
         if (user.balance < (buyQuantity * currentPrice)) {
             toast.error("Insufficient balance.");
             setBuyLoading(false);
             return;
         }
+        
         try {
             const investmentData = {
                 symbol: stockData.symbol,
                 quantity: buyQuantity,
-                buy_price: currentPrice,
+                buy_price: currentPrice, // Backend calculates real cost
                 buy_date: new Date().toISOString(),
             };
-            await buyInvestment(user.id, investmentData);
+            
+            // Pass orderType and limitPrice to API
+            await buyInvestment(user.id, investmentData, orderType, orderType === "LIMIT" ? limitPrice : null);
+            
             await refreshUser();
-            toast.success(`Successfully purchased ${buyQuantity} share(s) of ${stockData.symbol}!`);
+            toast.success(`Successfully executed ${orderType} BUY for ${stockData.symbol}!`);
             setQuantity(1);
         } catch (err) {
             toast.error(err?.detail || err?.message || 'Purchase failed.');
@@ -185,23 +178,20 @@ function StockDetails() {
     };
 
     const handleWatchlistToggle = async () => {
-        if (!user) {
-            toast.error("Please log in to manage your watchlist.");
-            return;
-        }
+        if (!user) { toast.error("Please log in."); return; }
         setWatchlistLoading(true);
         try {
             if (isWatchlisted) {
                 await removeFromWatchlist(user.id, symbol);
-                toast.info(`${symbol.toUpperCase()} removed from your watchlist.`);
+                toast.info(`Removed from watchlist.`);
                 setIsWatchlisted(false);
             } else {
                 await addToWatchlist(user.id, symbol);
-                toast.success(`${symbol.toUpperCase()} added to your watchlist!`);
+                toast.success(`Added to watchlist!`);
                 setIsWatchlisted(true);
             }
         } catch (err) {
-            toast.error(err?.detail || "Watchlist update failed.");
+            toast.error("Watchlist update failed.");
         } finally {
             setWatchlistLoading(false);
         }
@@ -216,19 +206,11 @@ function StockDetails() {
     };
 
     const currencyCode = stockData?.currency || 'USD';
-    const estimatedCost = Number(quantity) * (stockData?.close || 0);
+    const estimatedCost = Number(quantity) * (orderType === "LIMIT" ? Number(limitPrice) : (stockData?.close || 0));
 
-    if (isLoading) {
-        return <div className="container"><p>Loading data for {symbol}...</p></div>;
-    }
-
-    if (error) {
-        return <div className="container"><BackButton /><p style={{ color: "var(--danger)", textAlign: 'center' }}>Error: {error}</p></div>;
-    }
-
-    if (!stockData) {
-        return <div className="container"><BackButton /><p>No data available for this stock.</p></div>
-    }
+    if (isLoading) return <div className="container"><p>Loading data...</p></div>;
+    if (error) return <div className="container"><BackButton /><p style={{ color: "var(--danger)" }}>Error: {error}</p></div>;
+    if (!stockData) return <div className="container"><BackButton /><p>No data.</p></div>;
 
     return (
         <div className="container">
@@ -236,27 +218,11 @@ function StockDetails() {
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                     <h1>{stockData.name || symbol} ({stockData.symbol})</h1>
-                    <p style={{ fontSize: '2rem', color: 'var(--text-primary)', fontWeight: 'bold', margin: 0 }}>
-                        {formatCurrency(stockData.close, currencyCode)}
-                    </p>
-                    {isDividendStock && <p style={{ margin: '0.25rem 0 0 0', color: 'var(--brand-primary)', fontWeight: 'bold' }}>💵 This stock may pay dividends.</p>}
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0 }}>{formatCurrency(stockData.close, currencyCode)}</p>
+                     {isDividendStock && <p style={{ margin: '0.25rem 0 0 0', color: 'var(--brand-primary)', fontWeight: 'bold' }}>💵 This stock may pay dividends.</p>}
                 </div>
-                <button
-                    onClick={handleWatchlistToggle}
-                    disabled={watchlistLoading || !user}
-                    style={{
-                        padding: '0.6rem 1.2rem',
-                        backgroundColor: isWatchlisted ? 'transparent' : 'var(--brand-primary)',
-                        border: `2px solid ${isWatchlisted ? 'var(--brand-primary)' : 'transparent'}`,
-                        color: isWatchlisted ? 'var(--brand-primary)' : 'white',
-                        cursor: !user ? 'not-allowed' : 'pointer',
-                        borderRadius: '8px',
-                        fontWeight: 'bold',
-                        transition: 'all 0.2s ease',
-                    }}
-                    title={!user ? "Login to manage watchlist" : (isWatchlisted ? "Remove from Watchlist" : "Add to Watchlist")}
-                >
-                    {watchlistLoading ? '...' : (isWatchlisted ? '★ Following' : '☆ Add to Watchlist')}
+                <button onClick={handleWatchlistToggle} disabled={watchlistLoading || !user} style={{ padding: '0.6rem 1.2rem', background: isWatchlisted ? 'transparent' : '#4299e1', border: '2px solid #4299e1', borderRadius: '8px', color: isWatchlisted ? '#4299e1' : 'white' }}>
+                    {watchlistLoading ? '...' : (isWatchlisted ? '★ Following' : '☆ Watchlist')}
                 </button>
             </div>
             
@@ -266,9 +232,9 @@ function StockDetails() {
                 <p><span style={{color: 'var(--text-secondary)'}}>Low:</span> {formatCurrency(stockData.low, currencyCode)}</p>
             </div>
 
+            {/* --- RESTORED: Key Metrics Section --- */}
             <h2>Key Metrics</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {/* --- CHANGED: Using formatNumber for Market Cap --- */}
                 <Stat 
                     label="Market Cap" 
                     value={formatNumber(stockData.market_cap)} 
@@ -295,25 +261,60 @@ function StockDetails() {
                     tooltipText="The lowest price a stock has traded at in the last year."
                 />
             </div>
+            {/* --- END RESTORED SECTION --- */}
             
             <FinancialsSnapshot stockData={stockData} />
             <AnalystRating stockData={stockData} />
             <StockChart symbol={symbol} currency={currencyCode} />
 
             <div style={formContainerStyle}>
-                <h2>Buy {stockData.symbol}</h2>
+                <h2>Place Order: {stockData.symbol}</h2>
                 <form onSubmit={handleBuyStock}>
+                    
+                    {/* Order Type Selector */}
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                        <label>Order Type</label>
+                        <Select 
+                            value={orderType} 
+                            onChange={(e) => setOrderType(e.target.value)}
+                            bg="var(--bg-dark-primary)" 
+                            color="white"
+                            borderColor="var(--border-color)"
+                        >
+                            <option value="MARKET" style={{color: 'black'}}>Market Order</option>
+                            <option value="LIMIT" style={{color: 'black'}}>Limit Order</option>
+                        </Select>
+                        <Text fontSize="sm" color="gray.400" mt={1}>
+                            {orderType === "MARKET" ? "Buy immediately at current price." : "Buy only if price is below your limit."}
+                        </Text>
+                    </div>
+
+                    {/* Limit Price Input */}
+                    {orderType === "LIMIT" && (
+                        <div className="form-group" style={{ marginBottom: '1rem' }}>
+                            <label>Limit Price</label>
+                            <Input 
+                                type="number" 
+                                value={limitPrice} 
+                                onChange={(e) => setLimitPrice(e.target.value)}
+                                step="0.01"
+                                bg="var(--bg-dark-primary)"
+                            />
+                        </div>
+                    )}
+
                     <div className="form-group">
-                        <label htmlFor="quantity">Quantity</label>
-                        <input id="quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" step="1" required style={{ maxWidth: '150px' }} />
+                        <label>Quantity</label>
+                        <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" step="1" required style={{ width: '100%', padding: '0.5rem', borderRadius: '4px' }} />
                     </div>
+                    
                     <div style={{ color: 'var(--text-primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
-                        Estimated Cost: {formatCurrency(estimatedCost, currencyCode)}
+                        Est. Cost: {formatCurrency(estimatedCost, currencyCode)}
                     </div>
-                    <button type="submit" disabled={buyLoading || !user} title={!user ? "Login to buy shares" : ""}>
-                        {buyLoading ? 'Processing Purchase...' : 'Buy Shares'}
+                    
+                    <button type="submit" disabled={buyLoading || !user} style={{ width: '100%' }}>
+                        {buyLoading ? 'Processing...' : `Buy ${orderType === 'LIMIT' ? '@ Limit' : '@ Market'}`}
                     </button>
-                    {!user && <p style={{color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.5rem'}}>Please log in to trade.</p>}
                 </form>
             </div>
         </div>
