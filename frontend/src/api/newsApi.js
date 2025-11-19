@@ -1,12 +1,9 @@
 // src/api/newsApi.js
-
-import axios from "axios";
-
-const BASE_URL = "http://localhost:8000";
+import client from "./client";
 
 export const getFinancialNews = async () => {
   try {
-    const response = await axios.get(`${BASE_URL}/news`);
+    const response = await client.get("/news");
     return response.data;
   } catch (error) {
     console.error("Error fetching financial news:", error);

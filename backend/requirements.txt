@@ -1,22 +1,26 @@
-#python3.11.9
+# python3.11.9
 
+# --- Core Framework ---
 fastapi
 uvicorn[standard]
 motor
 python-dotenv
-yfinance
 pydantic[email]
-passlib==1.7.4
-bcrypt==3.2.0
-react-toastify
-react-loading-skeleton
-react-joyride
-websockets
+
+# --- Financial & Data ---
+yfinance
+pandas
 requests
 newsdataapi
-transformers
-torch
 
-# === Frontend Dependencies (install via npm) ===
-# Run inside /frontend:
-# npm install @chakra-ui/react @emotion/react @emotion/styled framer-motion
+# --- Security & Auth ---
+passlib==1.7.4
+bcrypt==3.2.0
+python-jose[cryptography]
+
+# --- Websockets ---
+websockets
+
+# --- Utilities ---
+# dnspython is often needed for MongoDB Atlas connections
+dnspython

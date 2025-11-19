@@ -1,46 +1,68 @@
 # utils/currency.py
 import yfinance as yf
 import time
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Cache for exchange rates
 exchange_rate_cache = {}
 CACHE_DURATION_SECONDS = 3600  # Cache for 1 hour
 
-def get_exchange_rate(from_currency: str, to_currency: str) -> float | None:
+# Fallback rate (Updated to roughly current market rate)
+# This prevents the app from crashing if Yahoo API is down
+DEFAULT_USD_INR_RATE = 84.50 
+
+def get_exchange_rate(from_currency: str, to_currency: str) -> float:
     """
     Fetches the exchange rate between two currencies using yfinance.
-    Caches the result for performance.
-    Example: get_exchange_rate("USD", "INR")
+    Returns a float. Uses a fallback if the API fails to prevent transaction crashes.
     """
-    pair = f"{from_currency}{to_currency}=X"
+    # 1. Handle identical currencies
+    if from_currency == to_currency:
+        return 1.0
+
+    # 2. Construct Symbol (Standard Yahoo format: "INR=X", "EURUSD=X")
+    # For USD to INR, Yahoo uses "INR=X" (which means how many INR for 1 USD)
+    if from_currency == "USD" and to_currency == "INR":
+        pair = "INR=X"
+    else:
+        pair = f"{from_currency}{to_currency}=X"
+
     current_time = time.time()
 
-    # Check cache first
+    # 3. Check Cache
     if pair in exchange_rate_cache:
         rate, timestamp = exchange_rate_cache[pair]
         if current_time - timestamp < CACHE_DURATION_SECONDS:
-            print(f"CACHE HIT: Returning cached rate for {pair}")
             return rate
 
-    print(f"CACHE MISS: Fetching new rate for {pair} from yfinance")
+    # 4. Fetch from API
+    print(f"Fetching new exchange rate for {pair}...")
     try:
-        ticker = yf.Ticker(pair)
-        # Get the most recent closing price as the rate
-        history = ticker.history(period="1d")
-        if not history.empty:
-            rate = history['Close'].iloc[-1]
+        # Download last 1 day of data
+        # progress=False suppresses the progress bar in logs
+        data = yf.download(pair, period="1d", progress=False)
+        
+        if not data.empty:
+            # Get the last available close price
+            # .iloc[-1] gets the last row, ['Close'] gets the closing price
+            # We wrap in float() to ensure it's a native Python float, not numpy
+            rate = float(data['Close'].iloc[-1])
+            
+            # Validate rate (sanity check: USD/INR shouldn't be < 50 or > 120)
+            # This protects against API glitches returning bad data
+            if from_currency == "USD" and to_currency == "INR" and (rate < 50 or rate > 120):
+                logger.warning(f"Anomalous rate detected for {pair}: {rate}. Using fallback.")
+                return DEFAULT_USD_INR_RATE
+
             exchange_rate_cache[pair] = (rate, current_time)
             return rate
-        else:
-            print(f"Warning: No data found for currency pair {pair}")
-            # Fallback or error handling
-            # For USD/INR, a rough fallback might be okay for a simulator
-            if from_currency == "USD" and to_currency == "INR":
-                return 83.5 # Provide a rough fallback
-            return None
+            
     except Exception as e:
-        print(f"Error fetching exchange rate for {pair}: {e}")
-        # Fallback or error handling
-        if from_currency == "USD" and to_currency == "INR":
-            return 83.5 # Provide a rough fallback
-        return None
+        logger.error(f"Error fetching exchange rate for {pair}: {e}")
+
+    # 5. Fallback
+    logger.warning(f"Using fallback rate ({DEFAULT_USD_INR_RATE}) for {pair}")
+    return DEFAULT_USD_INR_RATE

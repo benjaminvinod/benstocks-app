@@ -1,113 +1,84 @@
 // src/api/portfolio.js
-import axios from "axios";
+import client from "./client";
 
-const BASE_URL = "http://localhost:8000"; // Backend URL
-
-// We need getStockPrice here for the Dashboard chart
+// --- Stocks Wrappers ---
+// Used by Dashboard to fetch live prices for holdings
 export const getStockPrice = async (symbol) => {
   try {
-    const response = await axios.get(`${BASE_URL}/stocks/price`, {
+    const response = await client.get("/stocks/price", {
       params: { symbol }
     });
     return response.data;
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching stock price:", error);
     throw error.response?.data || error;
   }
 };
+
+// --- Portfolio Management ---
 
 export const getPortfolio = async (userId) => {
   try {
-    const response = await axios.get(`${BASE_URL}/portfolio/${userId}`);
+    const response = await client.get(`/portfolio/${userId}`);
     return response.data;
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching portfolio:", error);
     throw error.response?.data || error;
   }
 };
 
-// --- MODIFIED: Accept Order Type and Limit Price ---
 export const buyInvestment = async (userId, investment, orderType = "MARKET", limitPrice = null) => {
   try {
-    // We pass order_type and limit_price in the body
-    const payload = {
+    const body = {
         investment: investment,
         order_type: orderType,
         limit_price: limitPrice ? Number(limitPrice) : null
     };
     
-    // Note: The backend expects `investment` object fields inside the body, 
-    // but also the order params. We need to structure it carefully or 
-    // simpler: put params in query or flattened body.
-    // Let's adjust to match backend signature: 
-    // Backend: buy_investment(user_id, investment: Investment, order_type, limit_price)
-    // FastAPI expects JSON body.
-    
-    // Flattening the payload for the request
-    const response = await axios.post(`${BASE_URL}/portfolio/buy/${userId}`, {
-        ...investment, // Spread investment fields (symbol, quantity, etc.)
-        // Note: FastAPI Pydantic will look for these. 
-        // Actually, FastAPI with multiple body params expects a specific structure.
-        // Let's use the updated backend signature which expects JSON.
-        // Wait, if I mix Pydantic model and body params, FastAPI expects keys.
-    }, {
-        // Backend is likely expecting "investment" key + others if defined that way,
-        // OR if we flatten, we need to be careful. 
-        // Given the backend code: investment: Investment, order_type: str = Body(...)
-        // FastAPI expects: { "investment": {...}, "order_type": "...", "limit_price": ... }
-    });
-    
-    // Correction: The frontend call below constructs the body to match FastAPI's expectation
-    const body = {
-        investment: investment,
-        order_type: orderType,
-        limit_price: limitPrice
-    };
-    
-    const res = await axios.post(`${BASE_URL}/portfolio/buy/${userId}`, body);
-    return res.data;
+    const response = await client.post(`/portfolio/buy/${userId}`, body);
+    return response.data;
   } catch (error) {
-    console.error(error);
+    console.error("Buy investment error:", error);
     throw error.response?.data || error;
   }
 };
 
 export const sellInvestment = async (userId, symbol, quantityToSell) => {
   try {
-    const response = await axios.post(`${BASE_URL}/portfolio/sell/${userId}`, {
+    const response = await client.post(`/portfolio/sell/${userId}`, {
       investment_id: symbol,
       quantity_to_sell: quantityToSell,
     });
     return response.data;
   } catch (error) {
-    console.error(error);
+    console.error("Sell investment error:", error);
     throw error.response?.data || error;
   }
 };
 
 export const getTransactions = async (userId) => {
   try {
-    const response = await axios.get(`${BASE_URL}/portfolio/transactions/${userId}`);
+    const response = await client.get(`/portfolio/transactions/${userId}`);
     return response.data;
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching transactions:", error);
     throw error.response?.data || error;
   }
 };
 
 export const getPortfolioLiveValue = async (userId) => {
   try {
-    const response = await axios.get(`${BASE_URL}/portfolio/value/${userId}`);
+    const response = await client.get(`/portfolio/value/${userId}`);
     return response.data;
   } catch (error) {
-    console.error("Error fetching live portfolio value:", error);
+    console.error("Error fetching live value:", error);
     throw error.response?.data || error;
   }
 };
 
 export const getLeaderboard = async (limit = 10) => {
   try {
-    const response = await axios.get(`${BASE_URL}/leaderboard`, {
+    const response = await client.get("/leaderboard", {
       params: { limit }
     });
     return response.data;
@@ -119,17 +90,20 @@ export const getLeaderboard = async (limit = 10) => {
 
 export const getDiversificationScore = async (userId) => {
   try {
-    const response = await axios.get(`${BASE_URL}/analytics/diversification-score/${userId}`);
+    const response = await client.get(`/analytics/diversification-score/${userId}`);
     return response.data;
   } catch (error) {
     console.error("Error fetching diversification score:", error);
+    // Return a safe fallback so the UI doesn't crash
     return { score: 'N/A', feedback: 'Could not calculate score.', color: '#A0AEC0' };
   }
 };
 
+// --- Watchlist ---
+
 export const getWatchlist = async (userId) => {
   try {
-    const response = await axios.get(`${BASE_URL}/portfolio/watchlist/${userId}`);
+    const response = await client.get(`/portfolio/watchlist/${userId}`);
     return response.data;
   } catch (error) {
     console.error("Error fetching watchlist:", error);
@@ -139,7 +113,7 @@ export const getWatchlist = async (userId) => {
 
 export const addToWatchlist = async (userId, symbol) => {
   try {
-    const response = await axios.post(`${BASE_URL}/portfolio/watchlist/${userId}`, { symbol });
+    const response = await client.post(`/portfolio/watchlist/${userId}`, { symbol });
     return response.data;
   } catch (error) {
     console.error("Error adding to watchlist:", error);
@@ -149,7 +123,7 @@ export const addToWatchlist = async (userId, symbol) => {
 
 export const removeFromWatchlist = async (userId, symbol) => {
   try {
-    const response = await axios.delete(`${BASE_URL}/portfolio/watchlist/${userId}/${symbol}`);
+    const response = await client.delete(`/portfolio/watchlist/${userId}/${symbol}`);
     return response.data;
   } catch (error) {
     console.error("Error removing from watchlist:", error);

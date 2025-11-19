@@ -11,6 +11,7 @@ from utils.simulate_nav import get_simulated_nav
 from bson import ObjectId
 import yfinance as yf
 import asyncio
+import random 
 
 router = APIRouter()
 
@@ -21,43 +22,73 @@ SIMULATED_MF_IDS = [
     "SBI-CONTRA", "HDFC-FLEXI"
 ]
 
-# --- ADDED: Market Hours Helper ---
 def check_market_hours(symbol: str):
     """
     Returns True if trading is allowed.
-    Indian Stocks (.NS, .BO): 9:15 AM - 3:30 PM IST, Mon-Fri.
-    Crypto (-USD): 24/7.
-    Mutual Funds: 24/7 (Simulated).
-    US Stocks: Allowed 24/7 in simulator for convenience, or restricted to 7PM-1:30AM IST if strict.
+    
+    UPDATED: For this Simulator/Demo, we allow trading 24/7.
+    In a real app, you would uncomment the logic below.
     """
     # 1. Crypto & Mutual Funds are always open
     if symbol in SIMULATED_MF_IDS or symbol.upper().endswith("-USD"):
         return True
 
-    # 2. Indian Stocks (NSE/BSE)
+    # 2. Indian Stocks (NSE/BSE) - BYPASS FOR SIMULATOR
+    # We allow trading 24/7 so you can test the app anytime.
+    # If you want strict rules, uncomment the lines below:
+    
+    """
     if symbol.upper().endswith(".NS") or symbol.upper().endswith(".BO"):
-        # Define IST timezone (UTC + 5:30)
-        ist_offset = timezone(timedelta(hours=5, minutes=30))
-        now_ist = datetime.now(ist_offset)
+        utc_now = datetime.now(timezone.utc)
+        ist_now = utc_now + timedelta(hours=5, minutes=30)
         
-        # Check Weekend (5=Saturday, 6=Sunday)
-        if now_ist.weekday() >= 5:
-            raise HTTPException(status_code=400, detail="Market Closed: Indian markets are closed on weekends.")
+        if ist_now.weekday() >= 5: # Saturday/Sunday
+             raise HTTPException(status_code=400, detail="Market Closed: Weekend")
 
-        current_time = now_ist.time()
+        current_time = ist_now.time()
         market_open = time(9, 15)
         market_close = time(15, 30)
 
         if not (market_open <= current_time <= market_close):
-             raise HTTPException(status_code=400, detail=f"Market Closed: NSE/BSE open 09:15 - 15:30 IST. Current time: {current_time.strftime('%H:%M')}")
+             raise HTTPException(status_code=400, detail="Market Closed: 09:15 - 15:30 IST")
+    """
     
     return True
+
+def _seed_initial_history(balance: float) -> List[PortfolioHistoryItem]:
+    """Generates 7 days of fake history so the chart looks good immediately."""
+    history = []
+    base_value = balance
+    today = date.today()
+    
+    for i in range(7, 0, -1):
+        day = today - timedelta(days=i)
+        variation = random.uniform(-0.01, 0.01)
+        daily_val = base_value * (1 + variation)
+        
+        history.append(PortfolioHistoryItem(
+            date=day.isoformat(),
+            total_equity_inr=0.0,
+            cash_balance=round(daily_val, 2),
+            total_net_worth=round(daily_val, 2)
+        ))
+    return history
 
 async def get_portfolio(user_id: str) -> PortfolioDB:
     portfolio = await portfolio_collection.find_one({"user_id": user_id})
     if not portfolio:
-        result = await portfolio_collection.insert_one({"user_id": user_id, "investments": [], "history": []})
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        initial_balance = user.get("balance", 100000) if user else 100000
+        
+        seeded_history = [h.dict() for h in _seed_initial_history(initial_balance)]
+        
+        result = await portfolio_collection.insert_one({
+            "user_id": user_id, 
+            "investments": [], 
+            "history": seeded_history
+        })
         portfolio = await portfolio_collection.find_one({"_id": result.inserted_id})
+    
     portfolio["id"] = str(portfolio["_id"])
     return PortfolioDB(**portfolio)
 
@@ -75,7 +106,6 @@ async def buy_investment(
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if not user: raise HTTPException(status_code=404, detail="User not found")
 
-    # --- ADDED: Check Market Hours ---
     check_market_hours(investment.symbol)
 
     # 1. Determine Live Price & Rate
@@ -110,11 +140,10 @@ async def buy_investment(
     total_cost_original = investment.quantity * live_price_original
     cost_in_inr = total_cost_original * rate
     
-    # --- ADDED: Brokerage Fee (0.1%) ---
     brokerage_fee = cost_in_inr * 0.001
     total_deduction = cost_in_inr + brokerage_fee
     
-    investment.buy_cost_inr = cost_in_inr # Investment value tracks pure cost
+    investment.buy_cost_inr = cost_in_inr 
         
     if user["balance"] < total_deduction: 
         raise HTTPException(status_code=400, detail=f"Insufficient balance. Cost: {total_deduction:.2f} (incl. fee)")
@@ -136,7 +165,7 @@ async def buy_investment(
         total_value_inr=cost_in_inr,
         order_type=order_type,
         limit_price=limit_price,
-        transaction_fee=brokerage_fee # Log the fee
+        transaction_fee=brokerage_fee
     )
     await transactions_collection.insert_one(transaction.dict())
     
@@ -157,7 +186,6 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
     symbol_to_sell = sell_request.investment_id.upper()
     qty_to_sell = sell_request.quantity_to_sell
 
-    # --- ADDED: Check Market Hours ---
     check_market_hours(symbol_to_sell)
 
     holdings_for_symbol = sorted(
@@ -196,7 +224,6 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
         if rate is None: raise HTTPException(status_code=500, detail="Could not get exchange rate")
         sale_value_inr = total_sale_value_original * rate
 
-    # --- ADDED: Brokerage Fee (0.1%) on Sell ---
     brokerage_fee = sale_value_inr * 0.001
     net_payout = sale_value_inr - brokerage_fee
 
@@ -220,7 +247,6 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
         {"$set": {"investments": [inv.dict() for inv in updated_investments]}}
     )
 
-    # Credit Net Payout (Value - Fee)
     await users_collection.update_one({"_id": ObjectId(user_id)}, {"$inc": {"balance": net_payout}})
     
     try:
@@ -232,7 +258,7 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
             price_per_unit=live_price, 
             price_per_unit_inr=live_price * rate, 
             total_value_inr=sale_value_inr,
-            transaction_fee=brokerage_fee # Log Fee
+            transaction_fee=brokerage_fee 
         )
         await transactions_collection.insert_one(transaction.dict())
     except Exception as log_e:
@@ -256,6 +282,16 @@ async def get_live_portfolio_value(user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
 
     portfolio_db = await get_portfolio(user_id)
+    
+    # --- ADDED: Ensure history is populated ---
+    if not portfolio_db.history:
+        seeded_history = _seed_initial_history(user_doc["balance"])
+        portfolio_db.history = [PortfolioHistoryItem(**h) for h in [s for s in seeded_history]]
+        await portfolio_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"history": [h.dict() for h in portfolio_db.history]}}
+        )
+
     investments = portfolio_db.investments
     
     if not investments:

@@ -13,11 +13,20 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
+    # Starts the background task to fetch live prices
     asyncio.create_task(price_updater_task())
+
+# --- SECURITY FIX: Restrict CORS to Frontend URL ---
+origins = [
+    "http://localhost:3000",      # Standard React local port
+    "http://127.0.0.1:3000",      # Alternative local IP
+    "http://localhost:8000",      # Backend self-reference (optional)
+    # "https://your-production-domain.com" # Add this later when you deploy!
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,         # CHANGED: Replaced ["*"] with specific list
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,7 +40,7 @@ app.include_router(leaderboard.router, prefix="/leaderboard", tags=["Leaderboard
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(news.router, prefix="/news", tags=["News"])
 app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
-app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"]) # Add this line
+app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

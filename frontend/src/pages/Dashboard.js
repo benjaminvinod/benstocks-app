@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
-import { searchStocks } from '../api/stocksApi';
+import { searchStocks } from '../api/stocks';
 import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
 import { Pie, Line } from 'react-chartjs-2'; // --- ADDED: Line

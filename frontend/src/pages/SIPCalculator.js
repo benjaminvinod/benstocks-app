@@ -10,7 +10,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import BackButton from '../components/BackButton';
 import { useNumberFormat } from '../context/NumberFormatContext'; // ✅ Uses the new hook
 import axios from 'axios';
-import { searchStocks } from '../api/stocksApi';
+import { searchStocks } from '../api/stocks';
 import { getStockHistory } from '../api/stocks';
 import { toast } from 'react-toastify';
 
