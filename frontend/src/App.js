@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { ThemeProvider } from './context/ThemeContext'; 
+import { NumberFormatProvider } from './context/NumberFormatContext'; // --- ADDED IMPORT
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { ChakraProvider } from '@chakra-ui/react';
@@ -25,7 +26,7 @@ import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import RiskProfile from './pages/RiskProfile';
 import TaxOptimizer from './pages/TaxOptimizer';
-import SIPCalculator from './pages/SIPCalculator'; // --- ADDED: Import SIP Page
+import SIPCalculator from './pages/SIPCalculator';
 
 // Component Imports
 import Header from './components/Header';
@@ -38,9 +39,12 @@ function App() {
       <ChakraProvider theme={theme}>
         <AuthProvider>
           <WebSocketProvider>
-            <Router>
-              <AppContent />
-            </Router>
+            {/* --- ADDED PROVIDER --- */}
+            <NumberFormatProvider> 
+                <Router>
+                <AppContent />
+                </Router>
+            </NumberFormatProvider>
           </WebSocketProvider>
         </AuthProvider>
       </ChakraProvider>
@@ -77,7 +81,7 @@ function AppContent() {
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/risk-profile" element={<RiskProfile />} />
             <Route path="/tax-optimizer" element={<TaxOptimizer />} />
-            <Route path="/sip-calculator" element={<SIPCalculator />} /> {/* --- ADDED: Route */}
+            <Route path="/sip-calculator" element={<SIPCalculator />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>

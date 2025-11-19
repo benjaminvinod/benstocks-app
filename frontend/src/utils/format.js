@@ -32,22 +32,42 @@ export const formatDate = (dateString) => {
   }
 };
 
-// This new function formats very large numbers into a short format (B for billion, T for trillion)
-export const formatLargeNumber = (num) => {
+// --- UPDATED: Handles both International (M/B) and Indian (L/Cr) systems ---
+export const formatLargeNumber = (num, system = 'INTL') => {
     if (num === null || num === undefined || isNaN(num)) {
       return 'N/A';
     }
-    if (num >= 1e12) {
-      return (num / 1e12).toFixed(2) + 'T';
+
+    // Handle negative numbers
+    const sign = num < 0 ? "-" : "";
+    num = Math.abs(num);
+
+    if (system === 'IN') {
+        // Indian System: Lakhs (1e5) and Crores (1e7)
+        if (num >= 1e7) { // 1 Crore = 10,000,000
+            return sign + (num / 1e7).toFixed(2) + ' Cr';
+        }
+        if (num >= 1e5) { // 1 Lakh = 100,000
+            return sign + (num / 1e5).toFixed(2) + ' L';
+        }
+        if (num >= 1e3) {
+            return sign + (num / 1e3).toFixed(2) + ' K';
+        }
+        return sign + num.toString();
+    } else {
+        // International System: Millions (1e6), Billions (1e9), Trillions (1e12)
+        if (num >= 1e12) {
+            return sign + (num / 1e12).toFixed(2) + ' T';
+        }
+        if (num >= 1e9) {
+            return sign + (num / 1e9).toFixed(2) + ' B';
+        }
+        if (num >= 1e6) {
+            return sign + (num / 1e6).toFixed(2) + ' M';
+        }
+        if (num >= 1e3) {
+            return sign + (num / 1e3).toFixed(2) + ' K';
+        }
+        return sign + num.toString();
     }
-    if (num >= 1e9) {
-      return (num / 1e9).toFixed(2) + 'B';
-    }
-    if (num >= 1e6) {
-      return (num / 1e6).toFixed(2) + 'M';
-    }
-    if (num >= 1e3) {
-      return (num / 1e3).toFixed(2) + 'K';
-    }
-    return num.toString();
 };

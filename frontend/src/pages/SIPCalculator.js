@@ -3,12 +3,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Box, Container, Heading, Text, Input, Slider, SliderTrack, 
     SliderFilledTrack, SliderThumb, Button, SimpleGrid, VStack, 
-    Select, Tabs, TabList, TabPanels, Tab, TabPanel, List, ListItem, Spinner, Badge, FormControl, FormLabel
+    Select, Tabs, TabList, TabPanels, Tab, TabPanel, List, ListItem, Spinner, Badge
 } from '@chakra-ui/react';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
 import BackButton from '../components/BackButton';
-import { formatCurrency, formatLargeNumber } from '../utils/format';
+import { useNumberFormat } from '../context/NumberFormatContext'; // ✅ Uses the new hook
 import axios from 'axios';
 import { searchStocks } from '../api/stocksApi';
 import { getStockHistory } from '../api/stocks';
@@ -31,28 +31,26 @@ const MF_CATEGORY_RETURNS = {
     "Uncategorized": 10
 };
 
-// Categories list
+// ✅ Categories list (Ensuring this is present)
 const FUND_CATEGORIES = [
-    "All Funds",
-    "Index Funds",
-    "Midcap Funds",
-    "Smallcap Funds",
-    "Flexicap Funds",
-    "ELSS Funds",
-    "Contra & Value Funds"
+    "All Funds", "Index Funds", "Midcap Funds", "Smallcap Funds",
+    "Flexicap Funds", "ELSS Funds", "Contra & Value Funds"
 ];
 
 function SIPCalculator() {
-    const [mode, setMode] = useState('mf'); // 'mf' or 'stock'
+    const [mode, setMode] = useState('mf'); 
     const [monthlyInvestment, setMonthlyInvestment] = useState(5000);
     const [rateOfReturn, setRateOfReturn] = useState(12);
     const [timePeriod, setTimePeriod] = useState(10);
     const [chartData, setChartData] = useState(null);
     const [results, setResults] = useState({ invested: 0, gains: 0, total: 0 });
 
+    // ✅ Global Number Formatter
+    const { formatNumber } = useNumberFormat();
+
     // MF State
     const [funds, setFunds] = useState([]);
-    const [selectedCategory, setSelectedCategory] = useState('All Funds'); // --- NEW STATE
+    const [selectedCategory, setSelectedCategory] = useState('All Funds');
     const [selectedFund, setSelectedFund] = useState('');
 
     // Stock State
@@ -61,7 +59,6 @@ function SIPCalculator() {
     const [isSearching, setIsSearching] = useState(false);
     const [stockLoading, setStockLoading] = useState(false);
 
-    // --- Fetch Mutual Funds on Load ---
     useEffect(() => {
         const fetchFunds = async () => {
             try {
@@ -74,19 +71,17 @@ function SIPCalculator() {
         fetchFunds();
     }, []);
 
-    // --- Filter Funds based on Category ---
+    // ✅ Filter Logic (Ensuring this is present)
     const filteredFunds = useMemo(() => {
         if (selectedCategory === 'All Funds') return funds;
         return funds.filter(f => f.category === selectedCategory);
     }, [funds, selectedCategory]);
 
-    // --- Calculate Logic ---
     const calculateSIP = () => {
         const P = monthlyInvestment;
         const i = rateOfReturn / 12 / 100;
         const n = timePeriod * 12;
 
-        // SIP Formula
         const totalValue = P * ((Math.pow(1 + i, n) - 1) / i) * (1 + i);
         const investedAmount = P * n;
         const estimatedReturns = totalValue - investedAmount;
@@ -97,7 +92,6 @@ function SIPCalculator() {
             total: totalValue
         });
 
-        // Generate Chart Data
         const labels = [];
         const investedData = [];
         const valueData = [];
@@ -136,14 +130,11 @@ function SIPCalculator() {
         calculateSIP();
     }, [monthlyInvestment, rateOfReturn, timePeriod]);
 
-    // --- Handlers ---
-
+    // ✅ Category Handler
     const handleCategoryChange = (e) => {
         const cat = e.target.value;
         setSelectedCategory(cat);
-        setSelectedFund(''); // Reset selected fund when category changes
-        
-        // Optional: Set default return rate based on category generic average immediately
+        setSelectedFund(''); 
         if (cat !== 'All Funds' && MF_CATEGORY_RETURNS[cat]) {
              setRateOfReturn(MF_CATEGORY_RETURNS[cat]);
         }
@@ -154,7 +145,6 @@ function SIPCalculator() {
         setSelectedFund(fundId);
         const fund = funds.find(f => f.id === fundId);
         if (fund) {
-            // Auto-set return rate based on category
             const expectedReturn = MF_CATEGORY_RETURNS[fund.category] || 12;
             setRateOfReturn(expectedReturn);
             toast.info(`Set return rate to ${expectedReturn}% based on ${fund.category} historical averages.`);
@@ -174,23 +164,15 @@ function SIPCalculator() {
         setSymbol(selectedSymbol);
         setSuggestions([]);
         setStockLoading(true);
-        
         try {
-            // Fetch 5 year history to calculate CAGR
             const history = await getStockHistory(selectedSymbol, '5y');
-            
             if (history && history.length > 0) {
                 const startPrice = history[0].Close;
                 const endPrice = history[history.length - 1].Close;
                 const years = 5;
-                
-                // CAGR Formula: (End/Start)^(1/n) - 1
                 let cagr = (Math.pow(endPrice / startPrice, 1 / years) - 1) * 100;
-                
-                // Cap logical limits for projection (don't project -50% or +200%)
                 if (cagr < 0) cagr = 0; 
-                if (cagr > 35) cagr = 35; // Cap unrealistic projections at 35%
-                
+                if (cagr > 35) cagr = 35; 
                 setRateOfReturn(Number(cagr.toFixed(1)));
                 toast.success(`Calculated 5-Year CAGR for ${selectedSymbol}: ${cagr.toFixed(1)}%`);
             } else {
@@ -221,13 +203,11 @@ function SIPCalculator() {
             </Tabs>
 
             <SimpleGrid columns={[1, null, 2]} spacing={10}>
-                {/* Left Column: Inputs */}
                 <VStack spacing={6} align="stretch" bg="var(--bg-secondary-dynamic)" p={6} borderRadius="lg">
                     
-                    {/* Mutual Fund Selection Logic */}
                     {mode === 'mf' && (
                         <Box>
-                            {/* Category Dropdown */}
+                            {/* ✅ Category Dropdown */}
                             <Text mb={2} fontWeight="bold">1. Select Fund Category</Text>
                             <Select 
                                 value={selectedCategory} 
@@ -241,7 +221,7 @@ function SIPCalculator() {
                                 ))}
                             </Select>
 
-                            {/* Fund Dropdown (Filtered) */}
+                            {/* ✅ Fund Dropdown (Filtered) */}
                             <Text mb={2} fontWeight="bold">2. Select Mutual Fund</Text>
                             <Select 
                                 value={selectedFund} 
@@ -260,7 +240,6 @@ function SIPCalculator() {
                         </Box>
                     )}
 
-                    {/* Stock Selection Logic */}
                     {mode === 'stock' && (
                         <Box>
                              <Text mb={2} fontWeight="bold">Select Stock</Text>
@@ -345,20 +324,20 @@ function SIPCalculator() {
                     </Box>
                 </VStack>
 
-                {/* Right Column: Results & Chart */}
                 <VStack spacing={6} align="stretch">
                     <SimpleGrid columns={3} spacing={4} textAlign="center">
                         <Box bg="var(--bg-dark-primary)" p={3} borderRadius="md" border="1px solid var(--border-dynamic)">
                             <Text fontSize="sm" color="gray.400">Invested</Text>
-                            <Text fontWeight="bold">{formatLargeNumber(results.invested)}</Text>
+                            {/* ✅ Uses formatNumber hook for Indian System support */}
+                            <Text fontWeight="bold">{formatNumber(results.invested)}</Text>
                         </Box>
                         <Box bg="var(--bg-dark-primary)" p={3} borderRadius="md" border="1px solid var(--border-dynamic)">
                             <Text fontSize="sm" color="gray.400">Est. Returns</Text>
-                            <Text fontWeight="bold" color="green.400">{formatLargeNumber(results.gains)}</Text>
+                            <Text fontWeight="bold" color="green.400">{formatNumber(results.gains)}</Text>
                         </Box>
                         <Box bg="var(--bg-dark-primary)" p={3} borderRadius="md" border="1px solid var(--border-dynamic)">
                             <Text fontSize="sm" color="gray.400">Total Value</Text>
-                            <Text fontWeight="bold" fontSize="xl">{formatLargeNumber(results.total)}</Text>
+                            <Text fontWeight="bold" fontSize="xl">{formatNumber(results.total)}</Text>
                         </Box>
                     </SimpleGrid>
 

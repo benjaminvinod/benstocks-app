@@ -4,15 +4,16 @@ import { useParams } from "react-router-dom";
 import { getStockPrice } from "../api/stocks";
 import { buyInvestment, getWatchlist, addToWatchlist, removeFromWatchlist } from "../api/portfolio";
 import { useAuth } from "../context/AuthContext";
-import { formatCurrency, formatLargeNumber } from "../utils/format";
+import { formatCurrency } from "../utils/format";
 import BackButton from '../components/BackButton';
 import StockChart from "../components/StockChart";
 import { toast } from 'react-toastify';
 import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 import { useWebSocket } from '../context/WebSocketContext';
 import Tooltip from '../components/Tooltip';
+// --- CHANGED: Import hook
+import { useNumberFormat } from '../context/NumberFormatContext';
 
-// Reusable Stat Component
 const Stat = ({ label, value, tooltipText }) => (
     <div style={{ flex: '1 1 150px', background: 'var(--bg-dark-primary)', padding: '1rem', borderRadius: '8px', minWidth: '150px' }}>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
@@ -29,7 +30,6 @@ const Stat = ({ label, value, tooltipText }) => (
     </div>
 );
 
-// Analyst Rating Component
 const AnalystRating = ({ stockData }) => {
     const { recommendation, number_of_analysts, target_price, currency } = stockData;
     if (!recommendation && !number_of_analysts) {
@@ -81,9 +81,11 @@ const AnalystRating = ({ stockData }) => {
     );
 };
 
-// Financials Snapshot Component
+// --- CHANGED: Financials now use formatNumber hook
 const FinancialsSnapshot = ({ stockData }) => {
     const { revenue, net_income, total_debt, free_cash_flow } = stockData;
+    const { formatNumber } = useNumberFormat(); // Hook
+    
     const hasData = [revenue, net_income, total_debt, free_cash_flow].some(val => val !== null && typeof val !== 'undefined');
     if (!hasData) return null;
 
@@ -91,21 +93,22 @@ const FinancialsSnapshot = ({ stockData }) => {
         <div style={{ marginTop: '2rem' }}>
             <h2>Financial Snapshot (Annual)</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <Stat label="Total Revenue" value={formatLargeNumber(revenue)} tooltipText="Total sales from goods and services (last fiscal year)." />
-                <Stat label="Net Income" value={formatLargeNumber(net_income)} tooltipText="Company's profit after all expenses (last fiscal year)." />
-                <Stat label="Total Debt" value={formatLargeNumber(total_debt)} tooltipText="Total money the company owes (last reported)." />
-                <Stat label="Free Cash Flow" value={formatLargeNumber(free_cash_flow)} tooltipText="Cash left after paying for operations and investments." />
+                <Stat label="Total Revenue" value={formatNumber(revenue)} tooltipText="Total sales from goods and services (last fiscal year)." />
+                <Stat label="Net Income" value={formatNumber(net_income)} tooltipText="Company's profit after all expenses (last fiscal year)." />
+                <Stat label="Total Debt" value={formatNumber(total_debt)} tooltipText="Total money the company owes (last reported)." />
+                <Stat label="Free Cash Flow" value={formatNumber(free_cash_flow)} tooltipText="Cash left after paying for operations and investments." />
             </div>
         </div>
     );
 };
 
-
-// Main StockDetails Component
 function StockDetails() {
     const { symbol } = useParams();
     const { user, refreshUser } = useAuth();
     const { livePrices } = useWebSocket();
+    // --- CHANGED: Hook
+    const { formatNumber } = useNumberFormat();
+
     const [stockData, setStockData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -265,9 +268,10 @@ function StockDetails() {
 
             <h2>Key Metrics</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                {/* --- CHANGED: Using formatNumber for Market Cap --- */}
                 <Stat 
                     label="Market Cap" 
-                    value={formatLargeNumber(stockData.market_cap)} 
+                    value={formatNumber(stockData.market_cap)} 
                     tooltipText="Total value of all a company's shares of stock."
                 />
                 <Stat 
