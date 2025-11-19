@@ -12,7 +12,6 @@ import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 import { useWebSocket } from '../context/WebSocketContext';
 import Tooltip from '../components/Tooltip';
 import { useNumberFormat } from '../context/NumberFormatContext';
-// --- ADDED: Imports for Form
 import { Select, Input, FormControl, FormLabel, Box, Text } from '@chakra-ui/react';
 
 const Stat = ({ label, value, tooltipText }) => (
@@ -60,9 +59,7 @@ const AnalystRating = ({ stockData }) => {
 
 const FinancialsSnapshot = ({ stockData }) => {
     const { revenue, net_income, total_debt, free_cash_flow } = stockData;
-    // Use global formatter
     const { formatNumber } = useNumberFormat();
-    
     const hasData = [revenue, net_income, total_debt, free_cash_flow].some(val => val !== null && typeof val !== 'undefined');
     if (!hasData) return null;
 
@@ -83,14 +80,12 @@ function StockDetails() {
     const { symbol } = useParams();
     const { user, refreshUser } = useAuth();
     const { livePrices } = useWebSocket();
-    // Use global formatter
     const { formatNumber } = useNumberFormat();
 
     const [stockData, setStockData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     
-    // Buy Form State
     const [quantity, setQuantity] = useState(1);
     const [orderType, setOrderType] = useState("MARKET"); 
     const [limitPrice, setLimitPrice] = useState("");     
@@ -100,6 +95,7 @@ function StockDetails() {
     const [watchlistLoading, setWatchlistLoading] = useState(false);
 
     const isDividendStock = DIVIDEND_STOCKS.includes(symbol.toUpperCase());
+    const isCrypto = symbol.toUpperCase().endsWith("-USD");
 
     useEffect(() => {
         const latestPrice = livePrices[symbol.toUpperCase()];
@@ -143,15 +139,19 @@ function StockDetails() {
             return;
         }
 
-        // Client-side check for Limit Orders (Immediate or Cancel simulation)
         if (orderType === "LIMIT" && Number(limitPrice) < currentPrice) {
              toast.error(`Limit Order Error: Current price ${currentPrice} is higher than your limit ${limitPrice}. Order rejected.`);
              setBuyLoading(false);
              return;
         }
+        
+        // Estimate cost + 0.1% fee
+        const rawCost = buyQuantity * (orderType === "LIMIT" ? Number(limitPrice) : currentPrice);
+        const fee = rawCost * 0.001; 
+        const totalEstimated = rawCost + fee;
 
-        if (user.balance < (buyQuantity * currentPrice)) {
-            toast.error("Insufficient balance.");
+        if (user.balance < totalEstimated) {
+            toast.error("Insufficient balance (including fees).");
             setBuyLoading(false);
             return;
         }
@@ -160,11 +160,10 @@ function StockDetails() {
             const investmentData = {
                 symbol: stockData.symbol,
                 quantity: buyQuantity,
-                buy_price: currentPrice, // Backend calculates real cost
+                buy_price: currentPrice, 
                 buy_date: new Date().toISOString(),
             };
             
-            // Pass orderType and limitPrice to API
             await buyInvestment(user.id, investmentData, orderType, orderType === "LIMIT" ? limitPrice : null);
             
             await refreshUser();
@@ -206,7 +205,10 @@ function StockDetails() {
     };
 
     const currencyCode = stockData?.currency || 'USD';
-    const estimatedCost = Number(quantity) * (orderType === "LIMIT" ? Number(limitPrice) : (stockData?.close || 0));
+    
+    // Calc Estimated
+    const baseCost = Number(quantity) * (orderType === "LIMIT" ? Number(limitPrice) : (stockData?.close || 0));
+    const estFee = baseCost * 0.001;
 
     if (isLoading) return <div className="container"><p>Loading data...</p></div>;
     if (error) return <div className="container"><BackButton /><p style={{ color: "var(--danger)" }}>Error: {error}</p></div>;
@@ -220,6 +222,7 @@ function StockDetails() {
                     <h1>{stockData.name || symbol} ({stockData.symbol})</h1>
                     <p style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0 }}>{formatCurrency(stockData.close, currencyCode)}</p>
                      {isDividendStock && <p style={{ margin: '0.25rem 0 0 0', color: 'var(--brand-primary)', fontWeight: 'bold' }}>💵 This stock may pay dividends.</p>}
+                     {isCrypto && <p style={{ margin: '0.25rem 0 0 0', color: '#9F7AEA', fontWeight: 'bold' }}>🚀 Crypto Asset (Trades 24/7)</p>}
                 </div>
                 <button onClick={handleWatchlistToggle} disabled={watchlistLoading || !user} style={{ padding: '0.6rem 1.2rem', background: isWatchlisted ? 'transparent' : '#4299e1', border: '2px solid #4299e1', borderRadius: '8px', color: isWatchlisted ? '#4299e1' : 'white' }}>
                     {watchlistLoading ? '...' : (isWatchlisted ? '★ Following' : '☆ Watchlist')}
@@ -232,7 +235,6 @@ function StockDetails() {
                 <p><span style={{color: 'var(--text-secondary)'}}>Low:</span> {formatCurrency(stockData.low, currencyCode)}</p>
             </div>
 
-            {/* --- RESTORED: Key Metrics Section --- */}
             <h2>Key Metrics</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <Stat 
@@ -261,7 +263,6 @@ function StockDetails() {
                     tooltipText="The lowest price a stock has traded at in the last year."
                 />
             </div>
-            {/* --- END RESTORED SECTION --- */}
             
             <FinancialsSnapshot stockData={stockData} />
             <AnalystRating stockData={stockData} />
@@ -271,7 +272,6 @@ function StockDetails() {
                 <h2>Place Order: {stockData.symbol}</h2>
                 <form onSubmit={handleBuyStock}>
                     
-                    {/* Order Type Selector */}
                     <div className="form-group" style={{ marginBottom: '1rem' }}>
                         <label>Order Type</label>
                         <Select 
@@ -289,7 +289,6 @@ function StockDetails() {
                         </Text>
                     </div>
 
-                    {/* Limit Price Input */}
                     {orderType === "LIMIT" && (
                         <div className="form-group" style={{ marginBottom: '1rem' }}>
                             <label>Limit Price</label>
@@ -309,7 +308,10 @@ function StockDetails() {
                     </div>
                     
                     <div style={{ color: 'var(--text-primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
-                        Est. Cost: {formatCurrency(estimatedCost, currencyCode)}
+                        <span style={{display: 'block'}}>Base Cost: {formatCurrency(baseCost, currencyCode)}</span>
+                        <span style={{display: 'block', fontSize: '0.9rem', color: 'var(--text-secondary)'}}>+ Brokerage (0.1%): {formatCurrency(estFee, currencyCode)}</span>
+                        <hr style={{borderColor: 'var(--border-color)', margin: '0.5rem 0'}} />
+                        <strong>Total Cost: {formatCurrency(baseCost + estFee, currencyCode)}</strong>
                     </div>
                     
                     <button type="submit" disabled={buyLoading || !user} style={{ width: '100%' }}>

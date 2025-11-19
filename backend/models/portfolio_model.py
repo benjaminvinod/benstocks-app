@@ -13,7 +13,6 @@ class Investment(BaseModel):
     buy_date: datetime
     buy_cost_inr: Optional[float] = None 
 
-# --- ADDED: New Model for History ---
 class PortfolioHistoryItem(BaseModel):
     date: str # Format YYYY-MM-DD
     total_equity_inr: float
@@ -24,7 +23,6 @@ class PortfolioDB(BaseModel):
     user_id: str 
     id: Optional[str] = None 
     investments: List[Investment] = []
-    # --- ADDED: History Array ---
     history: List[PortfolioHistoryItem] = [] 
     
     model_config = ConfigDict(
@@ -43,9 +41,10 @@ class Transaction(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     price_per_unit_inr: Optional[float] = None 
     total_value_inr: Optional[float] = None 
-    # --- ADDED: Order Metadata ---
     order_type: Optional[Literal["MARKET", "LIMIT"]] = "MARKET"
     limit_price: Optional[float] = None
+    # --- ADDED: Transaction Fee ---
+    transaction_fee: Optional[float] = 0.0
 
 class SellRequest(BaseModel):
     investment_id: str 

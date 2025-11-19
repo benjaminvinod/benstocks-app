@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Body
 from typing import List, Dict, Optional
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta, timezone
 from models.portfolio_model import PortfolioDB, Investment, Transaction, SellRequest, PortfolioHistoryItem
 from database import portfolio_collection, users_collection, transactions_collection
 from utils.fetch_data import fetch_stock_data
@@ -21,6 +21,38 @@ SIMULATED_MF_IDS = [
     "SBI-CONTRA", "HDFC-FLEXI"
 ]
 
+# --- ADDED: Market Hours Helper ---
+def check_market_hours(symbol: str):
+    """
+    Returns True if trading is allowed.
+    Indian Stocks (.NS, .BO): 9:15 AM - 3:30 PM IST, Mon-Fri.
+    Crypto (-USD): 24/7.
+    Mutual Funds: 24/7 (Simulated).
+    US Stocks: Allowed 24/7 in simulator for convenience, or restricted to 7PM-1:30AM IST if strict.
+    """
+    # 1. Crypto & Mutual Funds are always open
+    if symbol in SIMULATED_MF_IDS or symbol.upper().endswith("-USD"):
+        return True
+
+    # 2. Indian Stocks (NSE/BSE)
+    if symbol.upper().endswith(".NS") or symbol.upper().endswith(".BO"):
+        # Define IST timezone (UTC + 5:30)
+        ist_offset = timezone(timedelta(hours=5, minutes=30))
+        now_ist = datetime.now(ist_offset)
+        
+        # Check Weekend (5=Saturday, 6=Sunday)
+        if now_ist.weekday() >= 5:
+            raise HTTPException(status_code=400, detail="Market Closed: Indian markets are closed on weekends.")
+
+        current_time = now_ist.time()
+        market_open = time(9, 15)
+        market_close = time(15, 30)
+
+        if not (market_open <= current_time <= market_close):
+             raise HTTPException(status_code=400, detail=f"Market Closed: NSE/BSE open 09:15 - 15:30 IST. Current time: {current_time.strftime('%H:%M')}")
+    
+    return True
+
 async def get_portfolio(user_id: str) -> PortfolioDB:
     portfolio = await portfolio_collection.find_one({"user_id": user_id})
     if not portfolio:
@@ -33,7 +65,6 @@ async def get_portfolio(user_id: str) -> PortfolioDB:
 async def fetch_portfolio(user_id: str):
     return await get_portfolio(user_id)
 
-# --- MODIFIED: Buy with Order Type Logic ---
 @router.post("/buy/{user_id}")
 async def buy_investment(
     user_id: str, 
@@ -43,6 +74,9 @@ async def buy_investment(
 ):
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if not user: raise HTTPException(status_code=404, detail="User not found")
+
+    # --- ADDED: Check Market Hours ---
+    check_market_hours(investment.symbol)
 
     # 1. Determine Live Price & Rate
     live_price_original = 0.0
@@ -64,27 +98,29 @@ async def buy_investment(
         raise HTTPException(status_code=500, detail="Could not fetch live price.")
 
     # 2. LIMIT ORDER CHECK
-    # For a Limit Buy, the Current Price must be <= Limit Price
     if order_type == "LIMIT" and limit_price is not None:
         if live_price_original > limit_price:
              raise HTTPException(
                  status_code=400, 
                  detail=f"Limit Order Skipped: Current price ({live_price_original}) is higher than your limit ({limit_price})."
              )
-        # If passed, we execute at the *actual* price (or limit price, but usually you pay market price if it's lower)
-        # For simulation simplicity, we buy at the current market price
     
-    # 3. Calculate Costs
-    # Use the LIVE price for the transaction, not the one sent from frontend (security)
+    # 3. Calculate Costs & Fees
     investment.buy_price = live_price_original 
     total_cost_original = investment.quantity * live_price_original
     cost_in_inr = total_cost_original * rate
-    investment.buy_cost_inr = cost_in_inr
+    
+    # --- ADDED: Brokerage Fee (0.1%) ---
+    brokerage_fee = cost_in_inr * 0.001
+    total_deduction = cost_in_inr + brokerage_fee
+    
+    investment.buy_cost_inr = cost_in_inr # Investment value tracks pure cost
         
-    if user["balance"] < cost_in_inr: raise HTTPException(status_code=400, detail="Insufficient balance")
+    if user["balance"] < total_deduction: 
+        raise HTTPException(status_code=400, detail=f"Insufficient balance. Cost: {total_deduction:.2f} (incl. fee)")
 
     # 4. Execute Transaction
-    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$inc": {"balance": -cost_in_inr}})
+    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$inc": {"balance": -total_deduction}})
     await portfolio_collection.update_one(
         {"user_id": user_id}, 
         {"$push": {"investments": investment.dict()}}
@@ -99,11 +135,12 @@ async def buy_investment(
         price_per_unit_inr=investment.buy_price * rate, 
         total_value_inr=cost_in_inr,
         order_type=order_type,
-        limit_price=limit_price
+        limit_price=limit_price,
+        transaction_fee=brokerage_fee # Log the fee
     )
     await transactions_collection.insert_one(transaction.dict())
     
-    return {"message": f"{order_type} Order executed successfully"}
+    return {"message": f"{order_type} Order executed. Fee: ₹{brokerage_fee:.2f}"}
 
 @router.post("/sell/{user_id}")
 async def sell_investment(user_id: str, sell_request: SellRequest):
@@ -119,6 +156,9 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
 
     symbol_to_sell = sell_request.investment_id.upper()
     qty_to_sell = sell_request.quantity_to_sell
+
+    # --- ADDED: Check Market Hours ---
+    check_market_hours(symbol_to_sell)
 
     holdings_for_symbol = sorted(
         [inv for inv in portfolio.investments if inv.symbol.upper() == symbol_to_sell],
@@ -156,6 +196,10 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
         if rate is None: raise HTTPException(status_code=500, detail="Could not get exchange rate")
         sale_value_inr = total_sale_value_original * rate
 
+    # --- ADDED: Brokerage Fee (0.1%) on Sell ---
+    brokerage_fee = sale_value_inr * 0.001
+    net_payout = sale_value_inr - brokerage_fee
+
     remaining_qty_to_sell = qty_to_sell
     updated_investments = [inv for inv in portfolio.investments if inv.symbol.upper() != symbol_to_sell]
     
@@ -176,15 +220,25 @@ async def sell_investment(user_id: str, sell_request: SellRequest):
         {"$set": {"investments": [inv.dict() for inv in updated_investments]}}
     )
 
-    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$inc": {"balance": sale_value_inr}})
+    # Credit Net Payout (Value - Fee)
+    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$inc": {"balance": net_payout}})
     
     try:
-        transaction = Transaction(user_id=user_id, symbol=symbol_to_sell, type="SELL", quantity=qty_to_sell, price_per_unit=live_price, price_per_unit_inr=live_price * rate, total_value_inr=sale_value_inr)
+        transaction = Transaction(
+            user_id=user_id, 
+            symbol=symbol_to_sell, 
+            type="SELL", 
+            quantity=qty_to_sell, 
+            price_per_unit=live_price, 
+            price_per_unit_inr=live_price * rate, 
+            total_value_inr=sale_value_inr,
+            transaction_fee=brokerage_fee # Log Fee
+        )
         await transactions_collection.insert_one(transaction.dict())
     except Exception as log_e:
         print(f"Warning: Failed to log sell transaction: {log_e}")
     
-    return {"message": "Investment sold successfully"}
+    return {"message": f"Sold successfully. Net payout: ₹{net_payout:.2f} (Fee: ₹{brokerage_fee:.2f})"}
 
 @router.get("/transactions/{user_id}")
 async def get_transactions(user_id: str):
@@ -195,7 +249,6 @@ async def get_transactions(user_id: str):
         del t["_id"]
     return transactions
 
-# --- MODIFIED: Auto-Snapshot Logic on Portfolio Fetch ---
 @router.get("/value/{user_id}")
 async def get_live_portfolio_value(user_id: str):
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
@@ -205,14 +258,11 @@ async def get_live_portfolio_value(user_id: str):
     portfolio_db = await get_portfolio(user_id)
     investments = portfolio_db.investments
     
-    # --- Standard Calculation Logic ---
     if not investments:
-        # Even empty portfolio has a "history" value (just cash)
         total_val = user_doc["balance"]
         await _try_snapshot_history(user_id, portfolio_db, total_val, 0.0, total_val)
         return {"user_id": user_id, "cash_balance_inr": user_doc["balance"], "total_investment_value_inr": 0.0, "total_portfolio_value_inr": total_val, "investment_details": {}, "errors": [], "history": portfolio_db.history}
 
-    # ... (Fetch logic same as before) ...
     symbols_to_fetch = {inv.symbol for inv in investments if inv.symbol not in SIMULATED_MF_IDS}
     live_prices_data = {}
     if symbols_to_fetch:
@@ -222,21 +272,15 @@ async def get_live_portfolio_value(user_id: str):
             try:
                 ticker_obj = tickers.tickers.get(symbol.upper())
                 if not ticker_obj: continue
-                # Prefer fast info
                 try:
                     price = ticker_obj.fast_info.last_price
-                    currency = "USD" # Default/Fallback
-                    # Try to get currency from info if needed, but fast_info is faster
-                    # For speed we might assume USD or fetch info only if critical
+                    currency = "USD" 
                 except:
                     info = ticker_obj.info
                     price = info.get("currentPrice") or info.get("regularMarketPrice")
                     currency = info.get("currency", "USD")
 
-                # To be robust with currency:
                 if price:
-                    # If fast fetch worked, we might miss currency. 
-                    # Helper logic:
                     is_indian = symbol.upper().endswith(".NS") or symbol.upper().endswith(".BO")
                     curr = "INR" if is_indian else "USD"
                     live_prices_data[symbol] = {"price": price, "currency": curr}
@@ -278,7 +322,6 @@ async def get_live_portfolio_value(user_id: str):
 
     total_portfolio_value_inr = user_doc["balance"] + total_investment_value_inr
 
-    # --- SNAPSHOT TRIGGER ---
     await _try_snapshot_history(user_id, portfolio_db, total_portfolio_value_inr, total_investment_value_inr, user_doc["balance"])
 
     return {
@@ -288,18 +331,13 @@ async def get_live_portfolio_value(user_id: str):
         "total_portfolio_value_inr": round(total_portfolio_value_inr, 2),
         "investment_details": investment_details,
         "errors": fetch_errors,
-        "history": portfolio_db.history # Return history to frontend
+        "history": portfolio_db.history 
     }
 
 async def _try_snapshot_history(user_id: str, portfolio_db: PortfolioDB, total_net_worth: float, equity: float, cash: float):
-    """
-    Checks if a history entry exists for today. If not, adds one.
-    """
     today_str = date.today().isoformat()
-    
-    # Check if last entry is today
     if portfolio_db.history and portfolio_db.history[-1].date == today_str:
-        return # Already snapped today
+        return 
 
     new_entry = PortfolioHistoryItem(
         date=today_str,
@@ -308,12 +346,10 @@ async def _try_snapshot_history(user_id: str, portfolio_db: PortfolioDB, total_n
         total_net_worth=round(total_net_worth, 2)
     )
     
-    # Update DB
     await portfolio_collection.update_one(
         {"user_id": user_id},
         {"$push": {"history": new_entry.dict()}}
     )
-    # Update local object so response includes it immediately
     portfolio_db.history.append(new_entry)
 
 @router.get("/watchlist/{user_id}")

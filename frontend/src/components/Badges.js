@@ -2,18 +2,53 @@ import React from 'react';
 
 // Define the badges and their criteria
 const badgeDefinitions = [
-  { name: "First Trade", description: "Awarded for making your first buy or sell.", minTransactions: 1, icon: "🥇" },
-  { name: "Active Trader", description: "Awarded for making at least 5 trades.", minTransactions: 5, icon: "📈" },
-  { name: "Seasoned Investor", description: "Awarded for making at least 10 trades.", minTransactions: 10, icon: "🏆" },
-  // Add more badges here based on different criteria (e.g., profit, portfolio size)
+  { 
+    name: "First Trade", 
+    description: "Awarded for making your first buy or sell.", 
+    check: (transactions) => transactions.length >= 1, 
+    icon: "🥇" 
+  },
+  { 
+    name: "Active Trader", 
+    description: "Awarded for making at least 5 trades.", 
+    check: (transactions) => transactions.length >= 5, 
+    icon: "📈" 
+  },
+  { 
+    name: "Seasoned Investor", 
+    description: "Awarded for making at least 10 trades.", 
+    check: (transactions) => transactions.length >= 10, 
+    icon: "🏆" 
+  },
+  { 
+    name: "Big Whale", 
+    description: "Made a single trade worth over ₹1 Lakh.", 
+    check: (transactions) => transactions.some(t => t.total_value_inr >= 100000), 
+    icon: "🐋" 
+  },
+  { 
+    name: "Crypto Bro", 
+    description: "Invested in a Cryptocurrency.", 
+    check: (transactions) => transactions.some(t => t.symbol.includes("-USD") && !t.symbol.includes("MON100")), 
+    icon: "🚀" 
+  },
+  { 
+    name: "Diversified", 
+    description: "Owns at least 3 different assets.", 
+    check: (transactions) => {
+        const uniqueSymbols = new Set(transactions.map(t => t.symbol));
+        return uniqueSymbols.size >= 3;
+    }, 
+    icon: "🎨" 
+  }
 ];
 
-// Simple Tooltip component (can reuse or enhance your existing Tooltip.js)
+// Simple Tooltip component
 const Tooltip = ({ text, children }) => {
   const [visible, setVisible] = React.useState(false);
   const tooltipStyle = {
     position: 'absolute',
-    bottom: '125%', // Position above the icon
+    bottom: '125%', 
     left: '50%',
     transform: 'translateX(-50%)',
     backgroundColor: 'var(--bg-dark-primary)',
@@ -43,12 +78,12 @@ const Tooltip = ({ text, children }) => {
 
 
 function Badges({ transactions = [] }) {
-  if (!transactions) return null; // Handle null case
+  if (!transactions) return null; 
 
-  const earnedBadges = badgeDefinitions.filter(badge => transactions.length >= badge.minTransactions);
+  const earnedBadges = badgeDefinitions.filter(badge => badge.check(transactions));
 
   if (earnedBadges.length === 0) {
-    return null; // Don't show the section if no badges are earned
+    return null; 
   }
 
   const badgeContainerStyle = {
@@ -62,7 +97,7 @@ function Badges({ transactions = [] }) {
   const badgeStyle = {
     display: 'inline-block',
     marginRight: '1rem',
-    fontSize: '1.5rem', // Make icons bigger
+    fontSize: '1.5rem', 
   };
 
   return (
