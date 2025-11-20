@@ -3,7 +3,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from routes import auth, portfolio, stocks, info, leaderboard, admin, news, mutual_funds, analytics, chat
-from websocket_manager import manager, price_updater_task
+from websocket_manager import manager, price_updater_task, start_price_updater_on_startup
 
 app = FastAPI(
     title="BenStocks API",
@@ -13,8 +13,9 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    # Starts the background task to fetch live prices
-    asyncio.create_task(price_updater_task())
+    # Starts the background task to fetch live prices using the new robust startup helper
+    # This ensures the cache is primed before the first user connects
+    await start_price_updater_on_startup()
 
 # --- SECURITY FIX: Restrict CORS to Frontend URL ---
 origins = [
@@ -41,7 +42,7 @@ app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(news.router, prefix="/news", tags=["News"])
 app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
-app.include_router(chat.router, prefix="/chat", tags=["AI Chat"]) # <--- NEW ROUTE ADDED
+app.include_router(chat.router, prefix="/chat", tags=["AI Chat"]) 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

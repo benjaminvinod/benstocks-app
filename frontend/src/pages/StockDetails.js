@@ -304,7 +304,16 @@ function StockDetails() {
 
                     <div className="form-group">
                         <label>Quantity</label>
-                        <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" step="1" required style={{ width: '100%', padding: '0.5rem', borderRadius: '4px' }} />
+                        <Input 
+                            type="number" 
+                            value={quantity} 
+                            onChange={(e) => setQuantity(e.target.value)} 
+                            min="1" 
+                            step="1" 
+                            required 
+                            bg="var(--bg-dark-primary)" 
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px' }} 
+                        />
                     </div>
                     
                     <div style={{ color: 'var(--text-primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>

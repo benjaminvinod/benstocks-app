@@ -1,30 +1,28 @@
 // src/components/NewsTicker.js
-
 import React, { useState, useEffect } from 'react';
+import { Box, VStack, Text, Link, Badge, Spinner, Flex } from '@chakra-ui/react';
 import { getFinancialNews } from '../api/newsApi';
 
-// Helper component for the sentiment tag
-const SentimentTag = ({ sentiment }) => {
-    const style = {
-        padding: '2px 8px',
-        borderRadius: '12px',
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-        color: '#fff',
-        marginRight: '8px',
-    };
+// Helper for Sentiment Badge using Chakra UI styling
+const SentimentBadge = ({ sentiment }) => {
+    let colorScheme = 'gray';
+    if (sentiment === 'POSITIVE') colorScheme = 'green';
+    if (sentiment === 'NEGATIVE') colorScheme = 'red';
 
-    if (sentiment === 'POSITIVE') {
-        style.backgroundColor = 'var(--brand-primary)'; // Blue for positive
-    } else if (sentiment === 'NEGATIVE') {
-        style.backgroundColor = 'var(--danger)'; // Red for negative
-    } else {
-        style.backgroundColor = 'var(--border-color)'; // Gray for neutral
-    }
-
-    return <span style={style}>{sentiment}</span>;
+    return (
+        <Badge 
+            colorScheme={colorScheme} 
+            fontSize="0.65em" 
+            variant="subtle" 
+            mr={2}
+            px={2}
+            py={0.5}
+            borderRadius="md"
+        >
+            {sentiment}
+        </Badge>
+    );
 };
-
 
 function NewsTicker() {
     const [news, setNews] = useState([]);
@@ -37,53 +35,48 @@ function NewsTicker() {
                 const data = await getFinancialNews();
                 setNews(data);
             } catch (err) {
-                setError('Could not load news feed.');
+                setError('Unavailable');
             }
             setLoading(false);
         };
         fetchNews();
     }, []);
 
-    const containerStyle = {
-        background: 'var(--bg-dark-primary)',
-        padding: '1rem 1.5rem',
-        borderRadius: '8px',
-        marginBottom: '2rem',
-        border: '1px solid var(--border-color)',
-    };
-
-    const newsItemStyle = {
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '0.5rem',
-        paddingBottom: '0.5rem',
-        borderBottom: '1px solid var(--border-color)',
-    };
-    
     if (loading) {
-        return <div style={containerStyle}>Loading market news...</div>
+        return <Flex justify="center" py={4}><Spinner size="sm" color="gray.500" /></Flex>;
     }
 
     if (error) {
-        return <div style={containerStyle}><p style={{color: 'var(--danger)'}}>{error}</p></div>
+        return <Text color="red.400" fontSize="sm">{error}</Text>;
     }
 
     return (
-        <div style={containerStyle}>
-            <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Latest Financial News</h3>
+        <VStack spacing={0} align="stretch" divider={<Box borderBottom="1px solid" borderColor="whiteAlpha.100" />}>
             {news.length > 0 ? (
-                news.map((item, index) => (
-                    <div key={index} style={newsItemStyle}>
-                        <SentimentTag sentiment={item.sentiment} />
-                        <a href={item.link} target="_blank" rel="noopener noreferrer">
+                news.slice(0, 6).map((item, index) => ( // Limit to 6 items to fit nicely
+                    <Box key={index} py={3} _first={{ pt: 0 }} _last={{ pb: 0, borderBottom: 'none' }}>
+                        <Flex align="center" mb={1}>
+                            <SentimentBadge sentiment={item.sentiment} />
+                            <Text fontSize="xs" color="gray.500">Today</Text>
+                        </Flex>
+                        <Link 
+                            href={item.link} 
+                            isExternal 
+                            fontSize="sm" 
+                            fontWeight="500" 
+                            color="gray.200"
+                            _hover={{ color: 'brand.400', textDecoration: 'none' }}
+                            lineHeight="1.4"
+                            display="block"
+                        >
                             {item.title}
-                        </a>
-                    </div>
+                        </Link>
+                    </Box>
                 ))
             ) : (
-                <p>No news available at the moment.</p>
+                <Text color="gray.500" fontSize="sm">No recent news found.</Text>
             )}
-        </div>
+        </VStack>
     );
 }
 

@@ -13,10 +13,9 @@ import { useWebSocket } from '../context/WebSocketContext';
 import {
   Box, Container, Flex, Heading, Text, SimpleGrid, Grid, GridItem,
   Input, List, ListItem, Spinner, Skeleton, Button, IconButton, Badge,
-  Stat, StatLabel, StatNumber, StatHelpText, StatArrow,
-  Tabs, TabList, TabPanels, Tab, TabPanel, Progress
+  Table, Thead, Tbody, Tr, Th, Td, Progress
 } from '@chakra-ui/react';
-import { SearchIcon, AddIcon, ArrowForwardIcon, StarIcon } from '@chakra-ui/icons';
+import { SearchIcon, AddIcon, ArrowForwardIcon } from '@chakra-ui/icons';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler);
 
@@ -47,8 +46,8 @@ const chartOptions = {
 
 // --- COMPONENTS ---
 
-const BentoCard = ({ children, title, icon, colSpan = 1, rowSpan = 1, minH = "auto" }) => (
-  <GridItem colSpan={colSpan} rowSpan={rowSpan} className="glass-panel fade-in" display="flex" flexDirection="column" overflow="hidden">
+const BentoCard = ({ children, title, icon, colSpan = 1, rowSpan = 1, minH = "auto", id }) => (
+  <GridItem id={id} colSpan={colSpan} rowSpan={rowSpan} className="glass-panel fade-in" display="flex" flexDirection="column" overflow="hidden">
     {title && (
       <Flex align="center" p={4} borderBottom="1px solid" borderColor="whiteAlpha.100" bg="blackAlpha.200">
         {icon && <Box mr={2} color="brand.400">{icon}</Box>}
@@ -57,7 +56,7 @@ const BentoCard = ({ children, title, icon, colSpan = 1, rowSpan = 1, minH = "au
         </Text>
       </Flex>
     )}
-    <Box p={5} flex="1" minH={minH}>
+    <Box p={5} flex="1" minH={minH} overflowY="auto">
       {children}
     </Box>
   </GridItem>
@@ -104,7 +103,7 @@ function Dashboard() {
 
     const tourSteps = [
         { target: '#hero-stat', content: 'Your total simulated Net Worth.' },
-        { target: '#chart-section', content: 'Track your performance history here.' },
+        { target: '#holdings-table', content: 'View and manage your current stock positions here.' },
         { target: '#quick-actions', content: 'Search and buy stocks instantly.' },
     ];
 
@@ -132,11 +131,29 @@ function Dashboard() {
                 getWatchlist(user.id)
             ]);
 
-            // 1. Portfolio & Allocation
+            // 1. Process Portfolio for Table & Chart
             if (portfolioRes?.investments) {
-                 setPortfolio(portfolioRes.investments);
-                 const labels = portfolioRes.investments.map(inv => inv.symbol);
-                 const data = portfolioRes.investments.map(inv => inv.quantity * inv.buy_price); // Approximate weight
+                 // Consolidate holdings by symbol
+                 const holdingsMap = {};
+                 portfolioRes.investments.forEach(inv => {
+                    if (!holdingsMap[inv.symbol]) {
+                        holdingsMap[inv.symbol] = { ...inv, total_cost: inv.quantity * inv.buy_price, total_qty: inv.quantity };
+                    } else {
+                        holdingsMap[inv.symbol].total_qty += inv.quantity;
+                        holdingsMap[inv.symbol].total_cost += (inv.quantity * inv.buy_price);
+                    }
+                 });
+                 
+                 const consolidated = Object.values(holdingsMap).map(h => ({
+                     ...h,
+                     avg_price: h.total_cost / h.total_qty,
+                     quantity: h.total_qty // Override quantity with total
+                 }));
+
+                 setPortfolio(consolidated);
+
+                 const labels = consolidated.map(inv => inv.symbol);
+                 const data = consolidated.map(inv => inv.total_cost); 
                  setChartData({ 
                    labels, 
                    datasets: [{ 
@@ -169,7 +186,7 @@ function Dashboard() {
             }
 
             if (liveValueRes) setLivePortfolioValue(liveValueRes);
-            if (transactionsRes) setTransactions(transactionsRes.slice(0, 5)); // Only top 5
+            if (transactionsRes) setTransactions(transactionsRes.slice(0, 5));
             if (diversificationRes) setDiversificationScore(diversificationRes);
             if (watchlistRes) setWatchlist(watchlistRes);
 
@@ -227,14 +244,14 @@ function Dashboard() {
             {/* --- BENTO GRID LAYOUT --- */}
             <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={6}>
                 
-                {/* 1. HERO STAT: Net Worth */}
+                {/* 1. HERO STAT */}
                 <BentoCard colSpan={{ base: 1, md: 2 }} title="Total Net Worth" id="hero-stat">
                     <Flex align="center" justify="space-between" h="100%">
                         <Box>
                             <Text fontSize="4xl" fontWeight="bold" className="mono-font">
                                 {formatCurrency(totalValue, 'INR')}
                             </Text>
-                            <Badge colorScheme="green" fontSize="sm" mt={2}>+2.4% This Week</Badge> 
+                            <Badge colorScheme="green" fontSize="sm" mt={2}>Live Updates 🟢</Badge> 
                         </Box>
                         <Box textAlign="right">
                              <Text color="gray.400" fontSize="sm">Cash Balance</Text>
@@ -261,7 +278,7 @@ function Dashboard() {
                     </Flex>
                 </BentoCard>
 
-                {/* 3. QUICK ACTIONS (Search) */}
+                {/* 3. QUICK ACTIONS */}
                 <BentoCard title="Quick Trade" colSpan={1} id="quick-actions">
                     <Box position="relative">
                         <Input 
@@ -308,7 +325,7 @@ function Dashboard() {
                     <AllocationChart data={chartData} />
                 </BentoCard>
 
-                {/* 6. WATCHLIST (Sparklines Placeholder) */}
+                {/* 6. WATCHLIST */}
                 <BentoCard title="Watchlist" colSpan={1} rowSpan={2}>
                     {watchlist.length === 0 ? <Text color="gray.500" fontSize="sm">No favorites yet.</Text> : (
                         <List spacing={3}>
@@ -332,9 +349,52 @@ function Dashboard() {
                     )}
                     <Button mt={4} w="full" size="xs" variant="ghost" rightIcon={<ArrowForwardIcon />}>View All</Button>
                 </BentoCard>
+                
+                {/* 7. CURRENT HOLDINGS TABLE (Added Back!) */}
+                <BentoCard title="Your Holdings" colSpan={{ base: 1, md: 3 }} id="holdings-table">
+                    {portfolio.length === 0 ? (
+                        <Text color="gray.500" fontSize="sm">You don't have any investments yet.</Text>
+                    ) : (
+                        <Table variant="simple" size="sm">
+                            <Thead>
+                                <Tr>
+                                    <Th color="gray.400">Ticker</Th>
+                                    <Th color="gray.400" isNumeric>Qty</Th>
+                                    <Th color="gray.400" isNumeric>Avg Buy</Th>
+                                    <Th color="gray.400" isNumeric>Current</Th>
+                                    <Th color="gray.400" isNumeric>Return</Th>
+                                    <Th></Th>
+                                </Tr>
+                            </Thead>
+                            <Tbody>
+                                {portfolio.map((inv) => {
+                                    const currentPrice = livePrices[inv.symbol] || inv.buy_price; // Fallback
+                                    const pnl = ((currentPrice - inv.avg_price) / inv.avg_price) * 100;
+                                    const isProfitable = pnl >= 0;
+                                    const currency = inv.symbol.includes('.NS') ? 'INR' : 'USD';
 
-                {/* 7. NEWS FEED */}
-                <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 4 }}>
+                                    return (
+                                        <Tr key={inv.symbol} _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${inv.symbol}`)}>
+                                            <Td fontWeight="bold">{inv.symbol}</Td>
+                                            <Td isNumeric className="mono-font">{inv.quantity.toFixed(2)}</Td>
+                                            <Td isNumeric className="mono-font">{formatCurrency(inv.avg_price, currency)}</Td>
+                                            <Td isNumeric className="mono-font">{livePrices[inv.symbol] ? formatCurrency(livePrices[inv.symbol], currency) : <Spinner size="xs"/>}</Td>
+                                            <Td isNumeric>
+                                                <Badge colorScheme={isProfitable ? 'green' : 'red'}>
+                                                    {isProfitable ? '+' : ''}{pnl.toFixed(2)}%
+                                                </Badge>
+                                            </Td>
+                                            <Td><IconButton size="xs" icon={<ArrowForwardIcon />} variant="ghost" /></Td>
+                                        </Tr>
+                                    );
+                                })}
+                            </Tbody>
+                        </Table>
+                    )}
+                </BentoCard>
+
+                {/* 8. NEWS FEED */}
+                <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 1 }}>
                     <NewsTicker />
                 </BentoCard>
 
