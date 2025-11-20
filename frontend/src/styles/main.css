@@ -1,40 +1,49 @@
 /* src/styles/main.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Original Fallbacks - Keep these */
-  --bg-dark-primary: #1a202c;
-  --bg-dark-secondary: #2d3748;
-  --border-color: #4a5568;
-  --text-primary: #edf2f7;
-  --text-secondary: #a0aec0;
-  --brand-primary: #4299e1;
-  --brand-hover: #63b3ed;
-  --danger: #e53e3e;
+  /* --- Base Palette (Midnight Pro Defaults) --- */
+  --bg-dark-primary: #0f172a;   /* Deep Slate */
+  --bg-dark-secondary: #1e293b; /* Lighter Slate */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --brand-primary: #0ea5e9;     /* Sky Blue */
+  --brand-hover: #0284c7;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --success: #10b981;
+  --danger: #f43f5e;
 
-  /* Dynamic Overrides - Will be set by ThemeContext */
-  /* Use fallbacks to ensure defaults if JS fails */
+  /* --- Dynamic Variables (Used by ThemeContext) --- */
+  /* These default to the Midnight Pro values but can be overridden by JS */
   --brand-primary-dynamic: var(--brand-primary);
   --text-primary-dynamic: var(--text-primary);
   --text-secondary-dynamic: var(--text-secondary);
   --bg-primary-dynamic: var(--bg-dark-primary);
   --bg-secondary-dynamic: var(--bg-dark-secondary);
   --border-dynamic: var(--border-color);
+  
+  /* Professional Gradients */
+  --gradient-body: radial-gradient(circle at 15% 50%, rgba(14, 165, 233, 0.08), transparent 25%), 
+                   radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.05), transparent 25%);
+  --gradient-glass: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.7) 100%);
+  
+  /* Fallback for ThemeContext legacy support */
   --dynamic-gradient: linear-gradient(135deg, var(--bg-dark-primary) 0%, var(--bg-dark-secondary) 100%);
 }
 
-/* --- Global Styles --- */
+/* --- Global Reset & Typography --- */
 body, html, #root {
     margin: 0;
     padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    /* Use dynamic gradient for the body */
-    background: var(--dynamic-gradient);
-    /* Ensure background covers entire page and doesn't repeat */
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg-primary-dynamic);
+    /* Overlay the subtle radial glow on top of the background color */
+    background-image: var(--gradient-body); 
     background-attachment: fixed;
     background-size: cover;
-    /* Use dynamic text color */
     color: var(--text-primary-dynamic);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -43,116 +52,93 @@ body, html, #root {
 }
 
 h1, h2, h3, h4, h5, h6 {
-    /* Use dynamic text color */
     color: var(--text-primary-dynamic);
+    font-weight: 600;
+    letter-spacing: -0.02em;
     margin-top: 0;
 }
 
 p {
-  /* Use dynamic secondary text color */
   color: var(--text-secondary-dynamic);
   line-height: 1.6;
 }
 
 a {
-    /* Use dynamic primary color */
     color: var(--brand-primary-dynamic);
     text-decoration: none;
     transition: color 0.2s ease;
 }
 
 a:hover {
-    /* Use dynamic hover (calculate or define in theme) */
-    /* For simplicity, let's keep original hover for now */
     color: var(--brand-hover);
-    text-decoration: underline;
 }
 
-/* --- Form Elements (Update to use dynamic vars) --- */
-button {
-    background-color: var(--brand-primary-dynamic); /* Use dynamic */
-    border: none;
-    color: white; /* Generally keep white for contrast */
-    border-radius: 8px;
-    cursor: pointer;
-    padding: 0.75rem 1.5rem;
-    font-size: 1rem;
-    font-weight: 600;
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+/* --- UTILITY CLASSES (Used by Dashboard Bento Grid) --- */
+
+/* 1. Glassmorphism Panel */
+/* This creates the frosted glass effect for dashboard tiles */
+.glass-panel {
+  background: var(--gradient-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px); /* Safari support */
+  border: 1px solid var(--border-dynamic);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
-button:hover {
-     /* Use original hover for simplicity or define dynamic hover */
-    background-color: var(--brand-hover);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-button:disabled {
-  background-color: var(--border-dynamic); /* Use dynamic */
-  cursor: not-allowed;
-  opacity: 0.6;
+/* 2. Monospace Font for Financial Data */
+.mono-font {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+  letter-spacing: -0.5px;
 }
 
-input,
-select {
-    border: 1px solid var(--border-dynamic); /* Use dynamic */
-    border-radius: 8px;
-    background-color: var(--bg-secondary-dynamic); /* Use dynamic */
-    color: var(--text-primary-dynamic); /* Use dynamic */
-    padding: 0.75rem 1rem;
-    font-size: 1rem;
-    width: 100%;
-    box-sizing: border-box;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+/* 3. Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-input:focus,
-select:focus {
-    outline: none;
-    border-color: var(--brand-primary-dynamic); /* Use dynamic */
-    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5); /* Consider making shadow dynamic too */
+.fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
 }
 
+/* --- Legacy Component Support (Forms & Containers) --- */
+/* Keeping these to ensure older pages (Login/Signup) don't break */
 
-/* Keep other styles like .container, .page-header, .form-group for now */
 .container {
   width: 90%;
-  max-width: 1200px;
-  margin: 0 auto; /* Removed top/bottom margin, handled by App.js Box */
-  padding: 2rem;
-  background-color: rgba(45, 55, 72, 0.8); /* Use bg-secondary with some transparency */
-  backdrop-filter: blur(10px); /* Add blur effect */
-  border-radius: 12px;
-  border: 1px solid var(--border-dynamic); /* Use dynamic border */
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
 }
 
 .page-header {
   margin-bottom: 2rem;
-  border-bottom: 1px solid var(--border-dynamic); /* Use dynamic */
+  border-bottom: 1px solid var(--border-dynamic);
   padding-bottom: 1rem;
 }
 
-.form-group {
-  margin-bottom: 1.5rem;
+button {
+    font-family: 'Inter', sans-serif;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: var(--text-primary-dynamic); /* Use dynamic */
+/* Scrollbar Styling (Chrome/Safari) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-
-/* Add hover effect for suggestion items */
-.suggestion-item:hover {
-  background-color: var(--bg-primary-dynamic, var(--bg-dark-primary)) !important; /* Use dynamic hover */
+::-webkit-scrollbar-track {
+  background: var(--bg-primary-dynamic);
 }
-
-/* Recommendation card hover */
-.recommendation-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-    border-color: var(--brand-primary-dynamic);
+::-webkit-scrollbar-thumb {
+  background: var(--bg-secondary-dynamic);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }

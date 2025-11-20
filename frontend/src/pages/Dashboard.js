@@ -4,73 +4,84 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
 import { searchStocks } from '../api/stocks';
-import StockCard from '../components/StockCard';
 import { formatCurrency } from '../utils/format';
-import { Pie, Line } from 'react-chartjs-2'; // --- ADDED: Line
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title } from 'chart.js';
-import Badges from '../components/Badges';
+import { Pie, Line, Doughnut } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler } from 'chart.js';
 import NewsTicker from '../components/NewsTicker';
 import Joyride, { STATUS } from 'react-joyride';
 import { useWebSocket } from '../context/WebSocketContext';
 import {
-  Box, Container, Flex, Heading, Text, SimpleGrid,
-  Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon,
-  Input, List, ListItem, Spinner, Skeleton
+  Box, Container, Flex, Heading, Text, SimpleGrid, Grid, GridItem,
+  Input, List, ListItem, Spinner, Skeleton, Button, IconButton, Badge,
+  Stat, StatLabel, StatNumber, StatHelpText, StatArrow,
+  Tabs, TabList, TabPanels, Tab, TabPanel, Progress
 } from '@chakra-ui/react';
+import { SearchIcon, AddIcon, ArrowForwardIcon, StarIcon } from '@chakra-ui/icons';
 
-// --- ADDED: Register Line Chart components
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler);
 
-const DiversificationScoreCard = ({ scoreData }) => {
-    if (!scoreData) {
-        return <Skeleton height="120px" mb={8} borderRadius="lg" />;
+// --- CHART CONFIGURATION ---
+const chartOptions = {
+  plugins: {
+    legend: { display: false },
+    tooltip: { 
+      backgroundColor: '#1e293b', 
+      titleColor: '#f8fafc', 
+      bodyColor: '#cbd5e1',
+      borderColor: 'rgba(255,255,255,0.1)',
+      borderWidth: 1,
+      padding: 10,
+      cornerRadius: 8
     }
-    const { score, feedback, color, suggestions } = scoreData;
-
-    return (
-        <Box
-            bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
-            p={6}
-            borderRadius="lg"
-            mb={8}
-            borderLeftWidth="5px"
-            borderLeftColor={color || 'gray.500'}
-            boxShadow="md"
-        >
-            <Flex justify="space-between" align="start" wrap="wrap" gap={4}>
-                <Box flex="1">
-                    <Heading size="md" mb={1}>Portfolio Health: <span style={{color: color}}>{feedback}</span></Heading>
-                    <Text fontSize="3xl" fontWeight="bold" color={color || 'gray.500'} mb={2}>
-                        {score !== 'N/A' ? `${score}/100` : 'N/A'}
-                    </Text>
-                    
-                    {suggestions && suggestions.length > 0 && (
-                        <Box mt={3}>
-                            <Text fontWeight="bold" fontSize="sm" color="var(--text-secondary-dynamic)" mb={1}>AI Suggestions:</Text>
-                            <List spacing={1}>
-                                {suggestions.map((s, i) => (
-                                    <ListItem key={i} fontSize="sm" display="flex" alignItems="center">
-                                        <span style={{marginRight: '8px'}}>•</span> {s}
-                                    </ListItem>
-                                ))}
-                            </List>
-                        </Box>
-                    )}
-                </Box>
-            </Flex>
-        </Box>
-    );
+  },
+  scales: {
+    x: { grid: { display: false }, ticks: { color: '#64748b' } },
+    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+  },
+  maintainAspectRatio: false,
+  elements: {
+    line: { tension: 0.4 },
+    point: { radius: 0, hitRadius: 10 }
+  }
 };
 
-const DashboardSkeleton = () => (
-    <Container maxW="container.xl">
-        <Skeleton height="200px" mb={8} borderRadius="lg"/>
-        <SimpleGrid columns={[1, null, 2]} spacing={6}>
-           <Skeleton height="250px" borderRadius="lg"/>
-           <Skeleton height="250px" borderRadius="lg"/>
-        </SimpleGrid>
-    </Container>
+// --- COMPONENTS ---
+
+const BentoCard = ({ children, title, icon, colSpan = 1, rowSpan = 1, minH = "auto" }) => (
+  <GridItem colSpan={colSpan} rowSpan={rowSpan} className="glass-panel fade-in" display="flex" flexDirection="column" overflow="hidden">
+    {title && (
+      <Flex align="center" p={4} borderBottom="1px solid" borderColor="whiteAlpha.100" bg="blackAlpha.200">
+        {icon && <Box mr={2} color="brand.400">{icon}</Box>}
+        <Text fontSize="sm" fontWeight="600" color="gray.400" textTransform="uppercase" letterSpacing="wider">
+          {title}
+        </Text>
+      </Flex>
+    )}
+    <Box p={5} flex="1" minH={minH}>
+      {children}
+    </Box>
+  </GridItem>
 );
+
+const AllocationChart = ({ data }) => {
+  if (!data) return <Flex justify="center" align="center" h="100%"><Text color="gray.500">No assets</Text></Flex>;
+  return (
+    <Box h="200px" position="relative">
+      <Doughnut 
+        data={data} 
+        options={{ 
+          cutout: '70%', 
+          plugins: { legend: { display: false } },
+          maintainAspectRatio: false 
+        }} 
+      />
+      <Box position="absolute" top="50%" left="50%" transform="translate(-50%, -50%)" textAlign="center">
+        <Text fontSize="xs" color="gray.500">Assets</Text>
+        <Text fontWeight="bold" color="white">{data.datasets[0].data.length}</Text>
+      </Box>
+    </Box>
+  );
+};
 
 function Dashboard() {
     const { user } = useAuth();
@@ -80,36 +91,30 @@ function Dashboard() {
     const [portfolio, setPortfolio] = useState([]);
     const [watchlist, setWatchlist] = useState([]); 
     const [chartData, setChartData] = useState(null);
-    const [historyChartData, setHistoryChartData] = useState(null); // --- ADDED: History Data
+    const [historyChartData, setHistoryChartData] = useState(null);
     const [livePortfolioValue, setLivePortfolioValue] = useState(null);
     const [transactions, setTransactions] = useState([]);
-    const [investmentDetails, setInvestmentDetails] = useState({});
-    const [isInitialLoading, setIsInitialLoading] = useState(true);
-    const [portfolioError, setPortfolioError] = useState('');
-    const [symbol, setSymbol] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
-    const [suggestions, setSuggestions] = useState([]);
-    const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
-    const [runTour, setRunTour] = useState(false);
     const [diversificationScore, setDiversificationScore] = useState(null);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
+    
+    const [symbol, setSymbol] = useState('');
+    const [suggestions, setSuggestions] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [runTour, setRunTour] = useState(false);
 
     const tourSteps = [
-        { target: '#cash-balance', content: 'This is your starting cash balance.' },
-        { target: '#portfolio-history', content: 'Track your total net worth growth over time here.' }, // --- ADDED
-        { target: '#stock-checker-box', content: 'Search for any stock here.' },
-        { target: '#holdings-section', content: 'Your purchased investments appear here.' },
+        { target: '#hero-stat', content: 'Your total simulated Net Worth.' },
+        { target: '#chart-section', content: 'Track your performance history here.' },
+        { target: '#quick-actions', content: 'Search and buy stocks instantly.' },
     ];
 
     useEffect(() => {
         const hasTakenTour = localStorage.getItem('benstocks_tour_complete');
-        if (!hasTakenTour && !isInitialLoading) {
-            setRunTour(true);
-        }
+        if (!hasTakenTour && !isInitialLoading) setRunTour(true);
     }, [isInitialLoading]);
 
     const handleJoyrideCallback = (data) => {
-        const { status } = data;
-        if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+        if ([STATUS.FINISHED, STATUS.SKIPPED].includes(data.status)) {
             setRunTour(false);
             localStorage.setItem('benstocks_tour_complete', 'true');
         }
@@ -118,7 +123,6 @@ function Dashboard() {
     const fetchDashboardData = useCallback(async () => {
         if (!user?.id) return;
         setIsInitialLoading(true);
-        
         try {
             const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes] = await Promise.all([
                 getPortfolio(user.id), 
@@ -128,222 +132,213 @@ function Dashboard() {
                 getWatchlist(user.id)
             ]);
 
-            // Process Portfolio & Allocation Chart
-            if (portfolioRes && portfolioRes.investments) {
-                 const holdings = {};
-                 portfolioRes.investments.forEach(inv => {
-                     if (holdings[inv.symbol]) {
-                         holdings[inv.symbol].quantity += inv.quantity;
-                         holdings[inv.symbol].buy_cost_inr += inv.buy_cost_inr;
-                         holdings[inv.symbol].total_cost_original += (inv.quantity * inv.buy_price);
-                     } else { 
-                        holdings[inv.symbol] = { ...inv, total_cost_original: inv.quantity * inv.buy_price }; 
-                    }
+            // 1. Portfolio & Allocation
+            if (portfolioRes?.investments) {
+                 setPortfolio(portfolioRes.investments);
+                 const labels = portfolioRes.investments.map(inv => inv.symbol);
+                 const data = portfolioRes.investments.map(inv => inv.quantity * inv.buy_price); // Approximate weight
+                 setChartData({ 
+                   labels, 
+                   datasets: [{ 
+                     data, 
+                     backgroundColor: ['#0ea5e9', '#22c55e', '#f59e0b', '#ec4899', '#8b5cf6', '#6366f1'],
+                     borderWidth: 0
+                   }] 
                  });
-                 const consolidatedPortfolio = Object.values(holdings).map(holding => {
-                     const average_buy_price = holding.quantity > 0 ? holding.total_cost_original / holding.quantity : 0;
-                     return { ...holding, buy_price: average_buy_price };
-                 });
-                 setPortfolio(consolidatedPortfolio);
-
-                 if (consolidatedPortfolio.length > 0) {
-                     const labels = consolidatedPortfolio.map(inv => inv.symbol);
-                     const data = consolidatedPortfolio.map(inv => inv.buy_cost_inr || 0);
-                     const backgroundColors = labels.map(() => `hsla(${Math.random() * 360}, 70%, 70%, 0.6)`);
-                     setChartData({ labels, datasets: [{ label: 'Allocation (Cost)', data, backgroundColor: backgroundColors }] });
-                 } else { setChartData(null); }
             }
 
-            // --- ADDED: Process History Chart ---
-            // Check if liveValueRes has history (it should from our backend update)
+            // 2. History Chart
             const historyData = liveValueRes.history || [];
             if (historyData.length > 0) {
                 setHistoryChartData({
                     labels: historyData.map(h => h.date),
-                    datasets: [
-                        {
-                            label: 'Net Worth (INR)',
-                            data: historyData.map(h => h.total_net_worth),
-                            borderColor: '#48BB78',
-                            backgroundColor: 'rgba(72, 187, 120, 0.2)',
-                            fill: true,
-                            tension: 0.3
-                        }
-                    ]
+                    datasets: [{
+                        label: 'Net Worth',
+                        data: historyData.map(h => h.total_net_worth),
+                        borderColor: '#0ea5e9',
+                        backgroundColor: (context) => {
+                          const ctx = context.chart.ctx;
+                          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                          gradient.addColorStop(0, 'rgba(14, 165, 233, 0.5)');
+                          gradient.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+                          return gradient;
+                        },
+                        fill: true,
+                    }]
                 });
             }
 
-            if (liveValueRes) { setLivePortfolioValue(liveValueRes); setInvestmentDetails(liveValueRes.investment_details || {}); }
-            if (transactionsRes) { setTransactions(transactionsRes); }
-            setDiversificationScore(diversificationRes);
-            if (watchlistRes) { setWatchlist(watchlistRes); }
+            if (liveValueRes) setLivePortfolioValue(liveValueRes);
+            if (transactionsRes) setTransactions(transactionsRes.slice(0, 5)); // Only top 5
+            if (diversificationRes) setDiversificationScore(diversificationRes);
+            if (watchlistRes) setWatchlist(watchlistRes);
 
-        } catch (error) {
-            console.error("Failed fetch dashboard data:", error);
-            setPortfolioError("Error fetching dashboard data.");
-        } finally { setIsInitialLoading(false); }
+        } catch (error) { console.error(error); } 
+        finally { setIsInitialLoading(false); }
     }, [user]);
 
     useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
+    // Stock Search Logic
     useEffect(() => {
         if (symbol.trim() === '') { setSuggestions([]); return; }
-        const fetchSuggestions = async () => {
+        const timer = setTimeout(async () => {
             setIsSearching(true);
             const results = await searchStocks(symbol);
             setSuggestions(results); setIsSearching(false);
-        };
-        const debounceTimer = setTimeout(fetchSuggestions, 300);
-        return () => clearTimeout(debounceTimer);
+        }, 300);
+        return () => clearTimeout(timer);
     }, [symbol]);
 
-    const handleSuggestionClick = (selectedSymbol) => {
-        setSymbol(selectedSymbol); setSuggestions([]); setIsSuggestionsVisible(false);
-        navigate(`/stock/${selectedSymbol}`);
-    };
-
     if (isInitialLoading) {
-        return <DashboardSkeleton />;
+        return (
+            <Container maxW="container.xl" pt={8}>
+                <Skeleton height="200px" borderRadius="xl" mb={6} startColor="whiteAlpha.100" endColor="whiteAlpha.300"/>
+                <SimpleGrid columns={[1, 2, 4]} spacing={6}>
+                    <Skeleton height="150px" borderRadius="xl" />
+                    <Skeleton height="150px" borderRadius="xl" />
+                    <Skeleton height="150px" borderRadius="xl" />
+                    <Skeleton height="150px" borderRadius="xl" />
+                </SimpleGrid>
+            </Container>
+        );
     }
 
-    return (
-        <Container maxW="container.xl">
-            <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showProgress showSkipButton styles={{ options: { arrowColor: '#2d3748', backgroundColor: '#2d3748', primaryColor: '#4299e1', textColor: '#edf2f7' } }}/>
+    const totalValue = livePortfolioValue?.total_portfolio_value_inr || 0;
+    const totalInvested = livePortfolioValue?.total_investment_value_inr || 0;
+    const cashBalance = user?.balance || 0;
 
-            <Flex justify="space-between" align="center" mb={8} wrap="wrap" gap={4}>
+    return (
+        <Container maxW="100%" px={[4, 6, 8]} py={8}>
+            <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showSkipButton 
+                styles={{ options: { primaryColor: '#0ea5e9', backgroundColor: '#1e293b', textColor: '#fff', arrowColor: '#1e293b' } }} 
+            />
+
+            <Flex justify="space-between" align="center" mb={8}>
                 <Box>
-                    <Heading as="h1" size="xl">Welcome, {user?.username || 'Investor'}!</Heading>
-                    <Text id="cash-balance" color="var(--text-secondary-dynamic, var(--text-secondary))" fontSize="lg">
-                        Cash Balance: <Text as="span" fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{formatCurrency(user?.balance || 0, 'INR')}</Text>
-                    </Text>
+                    <Text fontSize="sm" color="gray.400">Welcome back,</Text>
+                    <Heading size="lg">{user?.username || 'Trader'}</Heading>
                 </Box>
-                <Box textAlign="right">
-                    {livePortfolioValue ? (
-                        <>
-                            <Text color="var(--text-secondary-dynamic, var(--text-secondary))">
-                                Investments Value: <Text as="span" fontWeight="bold" color="var(--text-primary-dynamic, var(--text-primary))">{formatCurrency(livePortfolioValue.total_investment_value_inr, 'INR')}</Text>
-                            </Text>
-                            <Text fontSize="2xl" color="var(--text-primary-dynamic, var(--text-primary))" fontWeight="bold">
-                                Total Assets: {formatCurrency(livePortfolioValue.total_portfolio_value_inr, 'INR')}
-                            </Text>
-                        </>
-                    ) : <Spinner size="sm" />}
-                </Box>
+                <Button leftIcon={<AddIcon />} colorScheme="brand" onClick={() => document.getElementById('stock-search').focus()}>
+                    New Trade
+                </Button>
             </Flex>
 
-            <DiversificationScoreCard scoreData={diversificationScore} />
-
-            {/* --- ADDED: History Chart Section --- */}
-            <Box 
-                id="portfolio-history"
-                bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" 
-                p={6} 
-                borderRadius="lg" 
-                boxShadow="md"
-                mb={8}
-                height="350px"
-            >
-                <Heading size="md" mb={4}>Portfolio Performance</Heading>
-                {historyChartData ? (
-                     <Line data={historyChartData} options={{ maintainAspectRatio: false }} />
-                ) : (
-                    <Flex justify="center" align="center" h="100%">
-                        <Text color="gray.500">Graph will appear after 24 hours of activity.</Text>
-                    </Flex>
-                )}
-            </Box>
-
-            <SimpleGrid columns={[1, null, 2]} spacing={8} mb={8}>
-                <Box id="news-ticker"><NewsTicker /></Box>
-                <Box><Badges transactions={transactions} /></Box>
-            </SimpleGrid>
-
-            <Box id="stock-checker-box" mb={6} bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={6} borderRadius="lg" boxShadow="md">
-                <Heading size="md" mb={4}>Stock Checker</Heading>
-                <Box position="relative" zIndex={50}> 
-                    <Input
-                        id="stock-checker-form"
-                        placeholder="e.g., AAPL or Reliance"
-                        value={symbol}
-                        onChange={(e) => { setSymbol(e.target.value); setIsSuggestionsVisible(true); }}
-                        onBlur={() => setTimeout(() => setIsSuggestionsVisible(false), 200)}
-                    />
-                    {isSuggestionsVisible && (suggestions.length > 0 || isSearching) && (
-                        <Box
-                            position="absolute" top="100%" left={0} right={0}
-                            bg="var(--bg-primary-dynamic, var(--bg-dark-primary))"
-                            borderWidth="1px" borderColor="var(--border-dynamic, var(--border-color))" borderRadius="0 0 8px 8px"
-                            mt="-1px" zIndex={1000} maxHeight="300px" overflowY="auto" boxShadow="lg"
-                        >
-                            {isSearching && <Flex justify="center" p={4}><Spinner size="md"/></Flex>}
-                            {!isSearching && (
-                                <List spacing={0}>
-                                    {suggestions.map((s) => (
-                                        <ListItem
-                                            key={s.symbol}
-                                            onMouseDown={() => handleSuggestionClick(s.symbol)}
-                                            px={4} py={2} cursor="pointer"
-                                            borderBottomWidth="1px" borderColor="var(--border-dynamic, var(--border-color))"
-                                            _hover={{ background: 'var(--bg-secondary-dynamic, var(--bg-dark-secondary))' }}
-                                        >
-                                            <Text as="strong">{s.symbol}</Text> <Text as="span" fontSize="sm">{s.name}</Text>
-                                        </ListItem>
-                                    ))}
-                                </List>
-                            )}
+            {/* --- BENTO GRID LAYOUT --- */}
+            <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={6}>
+                
+                {/* 1. HERO STAT: Net Worth */}
+                <BentoCard colSpan={{ base: 1, md: 2 }} title="Total Net Worth" id="hero-stat">
+                    <Flex align="center" justify="space-between" h="100%">
+                        <Box>
+                            <Text fontSize="4xl" fontWeight="bold" className="mono-font">
+                                {formatCurrency(totalValue, 'INR')}
+                            </Text>
+                            <Badge colorScheme="green" fontSize="sm" mt={2}>+2.4% This Week</Badge> 
                         </Box>
-                    )}
-                </Box>
-            </Box>
+                        <Box textAlign="right">
+                             <Text color="gray.400" fontSize="sm">Cash Balance</Text>
+                             <Text fontWeight="bold" fontSize="lg" className="mono-font">{formatCurrency(cashBalance, 'INR')}</Text>
+                             <Text color="gray.400" fontSize="sm" mt={2}>Invested</Text>
+                             <Text fontWeight="bold" fontSize="lg" className="mono-font">{formatCurrency(totalInvested, 'INR')}</Text>
+                        </Box>
+                    </Flex>
+                </BentoCard>
 
-            <Box id="watchlist-section" mb={6}>
-                <Heading size="md" mb={4}>Your Watchlist</Heading>
-                {watchlist.length === 0 ? (
-                    <Text color="gray.500">No stocks in watchlist.</Text>
-                ) : (
-                    <SimpleGrid columns={[2, 3, 4, 5]} spacing={4}>
-                        {watchlist.map((symbol) => {
-                            const price = livePrices[symbol]; 
-                            return (
-                                <Box 
-                                    key={symbol} 
-                                    bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" 
-                                    p={4} 
-                                    borderRadius="lg" 
-                                    border="1px solid var(--border-dynamic, var(--border-color))"
-                                    cursor="pointer"
-                                    _hover={{ borderColor: 'var(--brand-primary-dynamic, var(--brand-primary))', transform: 'translateY(-2px)' }}
-                                    transition="all 0.2s"
-                                    onClick={() => navigate(`/stock/${symbol}`)}
-                                >
-                                    <Text fontWeight="bold">{symbol}</Text>
-                                    <Text fontSize="lg" mt={1}>{price ? formatCurrency(price, symbol.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}</Text>
-                                </Box>
-                            );
-                        })}
-                    </SimpleGrid>
-                )}
-            </Box>
+                {/* 2. DIVERSIFICATION SCORE */}
+                <BentoCard title="Portfolio Health" colSpan={1}>
+                    <Flex direction="column" align="center" justify="center" h="100%">
+                        <Box position="relative" size="100px">
+                             <svg width="100" height="100" viewBox="0 0 100 100">
+                                 <circle cx="50" cy="50" r="40" stroke="#334155" strokeWidth="8" fill="transparent" />
+                                 <circle cx="50" cy="50" r="40" stroke={diversificationScore?.color || '#0ea5e9'} strokeWidth="8" fill="transparent" strokeDasharray={`${(diversificationScore?.score || 0) * 2.51} 251`} strokeDashoffset="0" transform="rotate(-90 50 50)" />
+                             </svg>
+                             <Box position="absolute" top="50%" left="50%" transform="translate(-50%, -50%)">
+                                 <Text fontWeight="bold" fontSize="xl">{diversificationScore?.score || 0}</Text>
+                             </Box>
+                        </Box>
+                        <Text mt={3} fontSize="sm" color={diversificationScore?.color} fontWeight="bold">{diversificationScore?.feedback || "Analyze"}</Text>
+                    </Flex>
+                </BentoCard>
 
-            <Accordion allowMultiple defaultIndex={[0, 1]}>
-                <AccordionItem mb={6} border="none">
-                    <h2><AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={4} borderRadius="lg"><Box flex="1" textAlign="left"><Heading size="md">Portfolio Allocation</Heading></Box><AccordionIcon /></AccordionButton></h2>
-                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" pt={4}>
-                         {chartData ? <Box maxW="350px" mx="auto"><Pie data={chartData} /></Box> : <Text>No data.</Text>}
-                    </AccordionPanel>
-                </AccordionItem>
-
-                <AccordionItem border="none">
-                    <h2 id="holdings-section"><AccordionButton bg="var(--bg-primary-dynamic, var(--bg-dark-primary))" p={4} borderRadius="lg"><Box flex="1" textAlign="left"><Heading size="md">Your Holdings</Heading></Box><AccordionIcon /></AccordionButton></h2>
-                    <AccordionPanel pb={4} bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" pt={4}>
-                        {portfolio.length === 0 ? <Text>No investments.</Text> : (
-                            <SimpleGrid columns={[1, null, 2, 3]} spacing={6}>
-                                {portfolio.map((inv) => <StockCard key={inv.symbol} investment={inv} fetchPortfolio={fetchDashboardData} liveDetails={investmentDetails[inv.id]} />)}
-                            </SimpleGrid>
+                {/* 3. QUICK ACTIONS (Search) */}
+                <BentoCard title="Quick Trade" colSpan={1} id="quick-actions">
+                    <Box position="relative">
+                        <Input 
+                            id="stock-search"
+                            placeholder="Search Ticker (e.g. AAPL)" 
+                            bg="blackAlpha.400" 
+                            border="none" 
+                            _focus={{ bg: 'blackAlpha.500', ring: 1, ringColor: 'brand.500' }}
+                            value={symbol}
+                            onChange={(e) => setSymbol(e.target.value)}
+                        />
+                        <IconButton 
+                            position="absolute" right={1} top={1} size="sm" 
+                            icon={<SearchIcon />} variant="ghost"
+                            isLoading={isSearching}
+                        />
+                        {suggestions.length > 0 && (
+                            <List position="absolute" w="100%" mt={2} bg="bg.800" borderRadius="md" boxShadow="xl" zIndex={10} border="1px solid" borderColor="whiteAlpha.200">
+                                {suggestions.map(s => (
+                                    <ListItem key={s.symbol} p={3} _hover={{ bg: 'whiteAlpha.100' }} cursor="pointer" onClick={() => navigate(`/stock/${s.symbol}`)}>
+                                        <Flex justify="space-between">
+                                            <Text fontWeight="bold">{s.symbol}</Text>
+                                            <Text fontSize="sm" color="gray.400">{s.name}</Text>
+                                        </Flex>
+                                    </ListItem>
+                                ))}
+                            </List>
                         )}
-                    </AccordionPanel>
-                </AccordionItem>
-            </Accordion>
+                    </Box>
+                    <Flex mt={4} gap={2} wrap="wrap">
+                        {['AAPL', 'TSLA', 'RELIANCE.NS', 'NIFTYBEES.NS'].map(t => (
+                            <Button key={t} size="xs" variant="outline" onClick={() => navigate(`/stock/${t}`)}>{t}</Button>
+                        ))}
+                    </Flex>
+                </BentoCard>
+
+                {/* 4. HISTORY CHART */}
+                <BentoCard title="Performance History" colSpan={{ base: 1, md: 3 }} rowSpan={2} minH="300px" id="chart-section">
+                     {historyChartData ? <Line data={historyChartData} options={chartOptions} /> : <Flex justify="center" align="center" h="100%"><Text color="gray.500">No history data available</Text></Flex>}
+                </BentoCard>
+
+                {/* 5. ASSET ALLOCATION */}
+                <BentoCard title="Allocation" colSpan={1} rowSpan={1}>
+                    <AllocationChart data={chartData} />
+                </BentoCard>
+
+                {/* 6. WATCHLIST (Sparklines Placeholder) */}
+                <BentoCard title="Watchlist" colSpan={1} rowSpan={2}>
+                    {watchlist.length === 0 ? <Text color="gray.500" fontSize="sm">No favorites yet.</Text> : (
+                        <List spacing={3}>
+                            {watchlist.slice(0, 5).map(sym => {
+                                const price = livePrices[sym];
+                                return (
+                                    <ListItem key={sym} p={2} borderRadius="md" _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${sym}`)}>
+                                        <Flex justify="space-between" align="center">
+                                            <Box>
+                                                <Text fontWeight="bold" fontSize="sm">{sym}</Text>
+                                                <Text fontSize="xs" color="gray.500">Stock</Text>
+                                            </Box>
+                                            <Text className="mono-font" fontWeight="600">
+                                                {price ? formatCurrency(price, sym.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}
+                                            </Text>
+                                        </Flex>
+                                    </ListItem>
+                                );
+                            })}
+                        </List>
+                    )}
+                    <Button mt={4} w="full" size="xs" variant="ghost" rightIcon={<ArrowForwardIcon />}>View All</Button>
+                </BentoCard>
+
+                {/* 7. NEWS FEED */}
+                <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 4 }}>
+                    <NewsTicker />
+                </BentoCard>
+
+            </Grid>
         </Container>
     );
 }
