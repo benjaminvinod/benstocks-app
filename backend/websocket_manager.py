@@ -71,7 +71,7 @@ async def get_active_symbols() -> Set[str]:
 def fetch_prices_blocking(active_symbols: Set[str]) -> dict:
     """
     Synchronous function to be run in a separate thread.
-    Fetches data in bulk to minimize HTTP requests.
+    Fetches data in bulk and ensures EVERY requested symbol gets a value.
     """
     if not active_symbols:
         return {}
@@ -81,48 +81,60 @@ def fetch_prices_blocking(active_symbols: Set[str]) -> dict:
     
     try:
         # Download data. 
-        # period='1d' is the smallest reliable chunk.
-        # group_by='ticker' makes parsing easier when >1 symbol.
+        # threads=False is safer for stability in loops
         data = yf.download(
             tickers_list, 
             period="1d", 
             group_by='ticker', 
-            threads=True, 
+            threads=False, 
             progress=False
         )
         
-        # Case 1: Single Symbol (DataFrame structure is different)
-        if len(tickers_list) == 1:
-            symbol = tickers_list[0]
-            # yfinance sometimes returns empty DF if symbol is bad
-            if not data.empty:
-                # Get the last valid Close price
-                price = data['Close'].iloc[-1]
-                if pd.notna(price):
-                    live_prices[symbol] = round(float(price), 2)
-                    
-        # Case 2: Multiple Symbols
-        else:
-            for symbol in tickers_list:
+        # --- FIX FOR WATCHLIST LOADING FOREVER ---
+        # We must iterate through the REQUESTED list, not just what Yahoo returned.
+        # If Yahoo drops a symbol, we must provide a fallback (0.0) so the UI stops spinning.
+        
+        for symbol in tickers_list:
+            price_found = False
+            
+            # Case 1: Single Symbol download structure
+            if len(tickers_list) == 1:
+                if not data.empty and 'Close' in data:
+                    # Check if 'Close' is a Series or Scalar (depends on yfinance version)
+                    try:
+                        price = float(data['Close'].iloc[-1])
+                        live_prices[symbol] = round(price, 2)
+                        price_found = True
+                    except: pass
+            
+            # Case 2: Multiple Symbols
+            else:
                 try:
-                    # Access the specific ticker's dataframe
-                    # Note: If data is missing, this key might not exist
                     if symbol in data:
-                        symbol_data = data[symbol]
-                    elif symbol in data.columns.levels[0]: # Handle MultiIndex safety
-                         symbol_data = data[symbol]
-                    else:
-                        continue
-
-                    if not symbol_data.empty:
-                        price = symbol_data['Close'].iloc[-1]
-                        if pd.notna(price):
-                            live_prices[symbol] = round(float(price), 2)
+                         # If symbol is a top-level key (standard behavior)
+                         col = data[symbol]
+                         if 'Close' in col:
+                             price = float(col['Close'].iloc[-1])
+                             live_prices[symbol] = round(price, 2)
+                             price_found = True
+                    elif symbol in data.columns.levels[0]:
+                         # MultiIndex handling
+                         price = float(data[symbol]['Close'].iloc[-1])
+                         live_prices[symbol] = round(price, 2)
+                         price_found = True
                 except Exception:
-                    continue 
+                    pass
+
+            # Fallback: If we requested it but didn't find it, send 0.0
+            # This stops the frontend spinner.
+            if not price_found:
+                live_prices[symbol] = 0.0
 
     except Exception as e:
         logger.error(f"Bulk fetch error: {e}")
+        # Emergency fallback: set everything to 0.0 so UI loads
+        for symbol in tickers_list:
+            live_prices[symbol] = 0.0
             
     return live_prices
 

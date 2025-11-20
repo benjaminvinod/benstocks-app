@@ -17,25 +17,36 @@ function Portify() {
     const [loading, setLoading] = useState(false);
     const endRef = useRef(null);
 
-    // 1. Load Session List on Mount
+    // 1. Load Session List on Mount & Auto-Select Latest
     useEffect(() => {
-        if (user?.id) fetchSessions();
+        if (user?.id) {
+            fetchSessions();
+        }
     }, [user]);
 
     const fetchSessions = async () => {
         try {
             const res = await client.get(`/chat/sessions/${user.id}`);
             setSessions(res.data);
+            
+            // AUTO-LOAD LOGIC: If sessions exist and we haven't selected one, load the first (latest)
+            if (res.data.length > 0 && !currentSessionId) {
+                loadChat(res.data[0].id);
+            } else if (res.data.length === 0) {
+                // If no sessions, show welcome message
+                startNewChat();
+            }
         } catch (err) { console.error(err); }
     };
 
     // 2. Load a Specific Chat History
     const loadChat = async (sessionId) => {
+        if (!sessionId) return;
         setCurrentSessionId(sessionId);
         setLoading(true);
         try {
             const res = await client.get(`/chat/history/${sessionId}`);
-            setMessages(res.data.messages);
+            setMessages(res.data.messages || []);
         } catch (err) { console.error(err); }
         setLoading(false);
     };
@@ -49,13 +60,26 @@ function Portify() {
         e.stopPropagation();
         if(!window.confirm("Delete this chat?")) return;
         await client.delete(`/chat/${sessionId}`);
-        fetchSessions();
-        if (sessionId === currentSessionId) startNewChat();
+        
+        // Refresh list
+        const res = await client.get(`/chat/sessions/${user.id}`);
+        setSessions(res.data);
+        
+        // If we deleted the active chat, switch to the next one or new chat
+        if (sessionId === currentSessionId) {
+            if (res.data.length > 0) {
+                loadChat(res.data[0].id);
+            } else {
+                startNewChat();
+            }
+        }
     };
 
     const handleSend = async () => {
         if (!input.trim()) return;
         const userMsg = { role: 'user', content: input };
+        
+        // Optimistic UI Update
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setLoading(true);
@@ -64,16 +88,18 @@ function Portify() {
             const res = await client.post('/chat/', {
                 user_id: user.id,
                 message: userMsg.content,
-                session_id: currentSessionId
+                session_id: currentSessionId // Send null if new, ID if existing
             });
             
             const botMsg = { role: 'assistant', content: res.data.response };
             setMessages(prev => [...prev, botMsg]);
             
-            // If this was a new chat, set the ID so we continue in same session
-            if (!currentSessionId) {
+            // CRITICAL FIX: If we just started a new chat, the backend created a session.
+            // We must save that ID so the next message goes to the SAME session.
+            if (!currentSessionId && res.data.session_id) {
                 setCurrentSessionId(res.data.session_id);
-                fetchSessions(); // Update sidebar with new title
+                // Refresh sidebar to show the new auto-generated title
+                fetchSessions(); 
             }
         } catch (err) {
             setMessages(prev => [...prev, { role: 'assistant', content: "Error connecting to Portify." }]);
@@ -104,7 +130,14 @@ function Portify() {
                             justify="space-between"
                         >
                             <Text fontSize="sm" noOfLines={1} color="var(--text-primary)">{s.title}</Text>
-                            <IconButton size="xs" icon={<DeleteIcon />} variant="ghost" color="gray.500" onClick={(e) => deleteChat(e, s.id)}/>
+                            <IconButton 
+                                size="xs" 
+                                icon={<DeleteIcon />} 
+                                variant="ghost" 
+                                color="gray.500" 
+                                _hover={{ color: 'red.400' }}
+                                onClick={(e) => deleteChat(e, s.id)}
+                            />
                         </HStack>
                     ))}
                 </VStack>

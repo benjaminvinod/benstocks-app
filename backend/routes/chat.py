@@ -1,91 +1,228 @@
 # backend/routes/chat.py
 import asyncio
 import re
+import requests
+import pandas as pd
+import numpy as np
 from datetime import datetime
 from typing import List, Optional
 
 import ollama
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException
 from database import chats_collection
 from models.chat_model import ChatSession, ChatMessage, CreateChatRequest
 from routes.portfolio import get_portfolio
+from routes.news import get_financial_news
 from utils.fetch_data import fetch_stock_data
-from utils.prompts import PORTIFY_SYSTEM_PROMPT, FEW_SHOT_EXAMPLES
+from utils.prompts import FEW_SHOT_EXAMPLES
 
 router = APIRouter()
 
-# --- CONSTANTS ---
-TICKER_BLACKLIST = {
+# --- CONSTANTS & STOP WORDS ---
+STOP_WORDS = {
     "AND", "THE", "FOR", "NEW", "BUY", "SELL", "WHO", "WHAT", 
     "ARE", "YOU", "IS", "IT", "NOW", "NOT", "YES", "WHY", 
     "HOW", "CAN", "LOW", "HIGH", "OUT", "GET", "SET", "LONG", 
-    "SHORT", "HOLD", "GOOD", "BAD", "TIME", "REAL", "FAKE"
+    "SHORT", "HOLD", "GOOD", "BAD", "TIME", "REAL", "FAKE",
+    "TELL", "ME", "ABOUT", "STOCK", "STOCKS", "PRICE", "VALUE",
+    "TODAY", "YESTERDAY", "TOMORROW", "ANALYSIS", "PREDICT", "FORECAST",
+    "SHOULD", "I", "MY", "PORTFOLIO", "THINK"
 }
 
-# --- HELPERS ---
+# --- ENHANCED SYSTEM PROMPT (ROAST MODE ACTIVATED) ---
+ENHANCED_SYSTEM_PROMPT = """
+You are Portify, a witty, sharp-tongued Wall Street veteran and the user's financial wingman.
+Your goal is to help them win the BenStocks simulation.
 
-def sanitize_input(text: str) -> str:
-    return re.sub(r'[^\w\s.,?!@#$%^&*()\-]', '', text).strip()
+### YOUR PERSONALITY
+- **Direct & Punchy:** Don't waffle. Get to the point.
+- **Witty & Sarcastic:** If the user owns bad stocks (high losses, terrible P/E), gently roast them. (e.g., "Holding this stock is a bold strategy... let's see if it pays off.").
+- **Not a Robot:** Use emojis (🚀, 📉, 🤡, 💰) and casual trader slang (HODL, Bagholder, Mooning).
+- **Educator:** When mentioning technicals (RSI, Trends), explain them simply. (e.g., "RSI is 80, which means it's overbought/expensive right now.").
 
-def extract_potential_tickers(text: str) -> List[str]:
-    words = text.split()
-    candidates = []
-    for word in words:
-        clean = re.sub(r'[^a-zA-Z.]', '', word).upper()
-        if 2 <= len(clean) <= 12 and clean not in TICKER_BLACKLIST:
-            candidates.append(clean)
-    return list(set(candidates))
+### YOUR DATA SOURCES (Use these strict priorities)
+1. **User's Portfolio:** Check if they OWN the stock they are asking about. Tailor advice to their position.
+2. **Technical Analysis:** Use the provided RSI and Trend data to give timing advice.
+3. **News:** Reference the provided headlines if relevant.
 
-async def smart_fetch_stock_data(symbol: str):
-    """Fetches data and adds intelligence (Drop from High, etc)."""
-    # 1. Try exact match
-    data = await asyncio.to_thread(fetch_stock_data, symbol)
+### HALLUCINATION PROTOCOL
+- If the "Market Data" section says "No Data", **DO NOT** invent a price. Admit you can't see it.
+- If you assumed a ticker (e.g., AAPL for "Apple"), mention it: "I'm looking at Apple Inc (AAPL)..."
+"""
+
+# --- TECHNICAL ANALYSIS ENGINE ---
+def calculate_technicals(history_df):
+    """Calculates RSI and simple trend from a pandas DataFrame."""
+    if history_df.empty or len(history_df) < 15:
+        return "Not enough data for technicals."
+
+    # 1. Calculate RSI (14-day)
+    delta = history_df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     
-    # 2. Fallback to .NS
-    if ("error" in data or not data.get("close")) and "." not in symbol:
-        indian_symbol = f"{symbol}.NS"
-        data_ns = await asyncio.to_thread(fetch_stock_data, indian_symbol)
-        if "error" not in data_ns:
-            data = data_ns
-            
-    # 3. Smart Calculations
-    if "error" not in data and data.get("close"):
-        try:
-            current = data.get("close", 0)
-            high_52 = data.get("week_52_high", current)
-            low_52 = data.get("week_52_low", current)
-            if high_52:
-                dip = ((high_52 - current) / high_52) * 100
-                data["smart_dip"] = f"{dip:.1f}% below ATH"
-            if low_52:
-                rally = ((current - low_52) / low_52) * 100
-                data["smart_rally"] = f"{rally:.1f}% above Lows"
-        except Exception:
-            pass
-    return data
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    current_rsi = rsi.iloc[-1]
+    
+    rsi_verdict = "Neutral"
+    if current_rsi > 70: rsi_verdict = "Overbought (Expensive)"
+    elif current_rsi < 30: rsi_verdict = "Oversold (Cheap/Dip)"
+
+    # 2. Trend (SMA 50 check)
+    # If we have enough data, check if price is above 50-day average
+    trend = "Sideways"
+    if len(history_df) > 50:
+        sma_50 = history_df['Close'].rolling(window=50).mean().iloc[-1]
+        current_price = history_df['Close'].iloc[-1]
+        trend = "Uptrend 🐂" if current_price > sma_50 else "Downtrend 🐻"
+
+    return f"RSI: {current_rsi:.1f} ({rsi_verdict}) | Trend: {trend}"
+
+# --- SMART SEARCH & DATA FETCHING ---
+
+def search_ticker_from_query(query: str) -> List[str]:
+    """Finds tickers via Yahoo. Prioritizes Stocks over Funds."""
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    try:
+        response = requests.get(url, headers=headers, timeout=2)
+        data = response.json()
+        quotes = data.get("quotes", [])
+        
+        found_tickers = []
+        if quotes:
+            # Priority 1: Equity (Stock)
+            for q in quotes:
+                if q.get("quoteType") == "EQUITY":
+                    found_tickers.append(q.get("symbol"))
+                    break 
+            # Priority 2: If no equity, take first result (could be Crypto/ETF)
+            if not found_tickers and quotes:
+                found_tickers.append(quotes[0].get("symbol"))
+                
+        return found_tickers
+    except:
+        return []
+
+def extract_potential_entities(text: str) -> List[str]:
+    clean_text = re.sub(r'[^\w\s]', '', text)
+    words = clean_text.split()
+    return list(set([w for w in words if w.upper() not in STOP_WORDS and len(w) >= 2]))
+
+async def resolve_context_and_fetch(user_message: str, user_id: str):
+    """
+    The Brain: Fetches Portfolio, News, and Market Data (Price + Technicals).
+    """
+    # 1. FETCH USER PORTFOLIO
+    portfolio_context = "User holds NO stocks. Cash Only."
+    user_holdings_map = {}
+    try:
+        pf = await get_portfolio(user_id)
+        if pf.investments:
+            holdings_desc = []
+            for inv in pf.investments:
+                # Calculate simplistic P/L status for context
+                status = "New"
+                user_holdings_map[inv.symbol] = inv
+                holdings_desc.append(f"{inv.symbol} ({inv.quantity} units)")
+            portfolio_context = f"User Holdings: {', '.join(holdings_desc)}. Cash: ${pf.history[-1].cash_balance:.0f}"
+    except: pass
+
+    # 2. FETCH NEWS HEADLINES
+    news_context = "No recent major news."
+    try:
+        news_items = await get_financial_news()
+        if news_items:
+            # Take top 3 headlines
+            headlines = [f"- {n['title']} ({n['sentiment']})" for n in news_items[:3]]
+            news_context = "\n".join(headlines)
+    except: pass
+
+    # 3. DETECT & FETCH MARKET DATA (With Technicals)
+    candidates = extract_potential_entities(user_message)
+    candidates = sorted(candidates, key=len, reverse=True)[:3]
+    
+    detected_tickers = set()
+    
+    # A. Check if user mentioned a stock they OWN (Context Awareness)
+    for word in candidates:
+        # Simple check if word matches a holding symbol
+        for holding_symbol in user_holdings_map.keys():
+            if word.upper() in holding_symbol:
+                detected_tickers.add(holding_symbol)
+
+    # B. Search Yahoo for new tickers
+    loop = asyncio.get_event_loop()
+    search_tasks = [loop.run_in_executor(None, search_ticker_from_query, word) for word in candidates]
+    if search_tasks:
+        search_results = await asyncio.gather(*search_tasks)
+        for res in search_results:
+            detected_tickers.update(res)
+    
+    market_data_str = ""
+    if not detected_tickers:
+        market_data_str = "[No specific ticker identified in query]"
+    else:
+        # Use asyncio.to_thread to fetch data without blocking
+        # We need a custom fetcher here to get HISTORY for Technicals
+        import yfinance as yf
+        
+        def fetch_full_analysis(symbol):
+            try:
+                ticker = yf.Ticker(symbol)
+                # Get 2mo history for RSI calculation
+                hist = ticker.history(period="2mo")
+                info = ticker.info or {}
+                
+                if hist.empty: return None
+
+                current_price = hist['Close'].iloc[-1]
+                technicals = calculate_technicals(hist)
+                
+                # Check if user owns it
+                holding_info = ""
+                if symbol in user_holdings_map:
+                    inv = user_holdings_map[symbol]
+                    pnl = (current_price - inv.buy_price) / inv.buy_price * 100
+                    holding_info = f" | [USER OWNS THIS: Avg Buy {inv.buy_price:.2f}, P/L: {pnl:.1f}%]"
+
+                return (
+                    f"| {symbol} | Price: {current_price:.2f} {info.get('currency','')} | "
+                    f"PE: {info.get('trailingPE','N/A')} | {technicals}{holding_info} |"
+                )
+            except: return None
+
+        analysis_tasks = [asyncio.to_thread(fetch_full_analysis, t) for t in list(detected_tickers)[:3]]
+        results = await asyncio.gather(*analysis_tasks)
+        
+        valid_rows = [r for r in results if r]
+        if valid_rows:
+            market_data_str = "\n".join(valid_rows)
+        else:
+            market_data_str = "[System: Could not fetch live data for detected names. Do not hallucinate prices.]"
+
+    return portfolio_context, news_context, market_data_str
 
 # --- ROUTES ---
 
 @router.get("/sessions/{user_id}")
 async def get_user_sessions(user_id: str):
-    """Returns a list of all chat sessions for the sidebar."""
     cursor = chats_collection.find({"user_id": user_id}).sort("updated_at", -1)
     sessions = await cursor.to_list(length=50)
     return [{"id": s["id"], "title": s["title"], "date": s["updated_at"]} for s in sessions]
 
 @router.get("/history/{session_id}")
 async def get_chat_history(session_id: str):
-    """Returns the full message history for a specific chat."""
     session = await chats_collection.find_one({"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    session["_id"] = str(session["_id"]) # Fix serialization
     return session
 
 @router.delete("/{session_id}")
 async def delete_chat_session(session_id: str):
-    result = await chats_collection.delete_one({"id": session_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Session not found")
+    await chats_collection.delete_one({"id": session_id})
     return {"message": "Deleted"}
 
 @router.post("/")
@@ -94,66 +231,51 @@ async def chat_with_advisor(request: CreateChatRequest):
     raw_message = request.message
     session_id = request.session_id
     
-    if not raw_message:
-         raise HTTPException(status_code=400, detail="Empty message")
+    if not raw_message: raise HTTPException(status_code=400, detail="Empty message")
+    user_message = re.sub(r'[^\w\s.,?!@#$%^&*()\-]', '', raw_message).strip()
 
-    user_message = sanitize_input(raw_message)
-
-    # 1. Load or Create Session
+    # 1. Manage Session
     session_data = None
     if session_id:
         session_data = await chats_collection.find_one({"id": session_id})
     
     if not session_data:
-        # Create New Session with Auto-Title
         title = " ".join(user_message.split()[:5]) + "..."
         new_session = ChatSession(user_id=user_id, title=title)
         session_data = new_session.dict()
-    
-    # 2. Build Context (Portfolio + Market Data)
-    portfolio_summary = "Cash Only."
-    try:
-        pf = await get_portfolio(user_id)
-        if pf.investments:
-            holdings = [f"{inv.symbol} ({inv.quantity:.1f} qty)" for inv in pf.investments]
-            portfolio_summary = f"Holdings: {', '.join(holdings)} | Cash: ${pf.history[-1].cash_balance:.0f}"
-    except: pass
 
-    tickers = extract_potential_tickers(user_message)
-    market_context = ""
-    if tickers:
-        tasks = [smart_fetch_stock_data(t) for t in tickers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for data in results:
-            if isinstance(data, dict) and "error" not in data:
-                market_context += (
-                    f"| {data.get('symbol')} | {data.get('currency', '')} {data.get('close')} | "
-                    f"PE: {data.get('pe_ratio','N/A')} | "
-                    f"{data.get('smart_dip','')} |\n"
-                )
+    # 2. GATHER INTELLIGENCE (Portfolio + Market + News)
+    portfolio_ctx, news_ctx, market_ctx = await resolve_context_and_fetch(user_message, user_id)
 
-    # 3. Build Prompt
-    messages_payload = [{'role': 'system', 'content': PORTIFY_SYSTEM_PROMPT}]
+    # 3. CONSTRUCT PROMPT
+    messages_payload = [{'role': 'system', 'content': ENHANCED_SYSTEM_PROMPT}]
     messages_payload.extend(FEW_SHOT_EXAMPLES)
     
-    # Add Previous History (Limit to last 6 turns to save context window)
+    # Add Conversation History
     previous_msgs = session_data.get("messages", [])
     for m in previous_msgs[-6:]: 
         messages_payload.append({"role": m["role"], "content": m["content"]})
 
-    # Add Context + Current Message
-    context_block = f"CONTEXT:\nPortfolio: {portfolio_summary}\nMarket Data:\n{market_context}"
-    messages_payload.append({'role': 'user', 'content': f"{context_block}\n\nQUERY: {user_message}"})
+    # Inject Data Context
+    full_context = (
+        f"--- REAL-TIME DATA ---\n"
+        f"USER PORTFOLIO: {portfolio_ctx}\n"
+        f"MARKET DATA: {market_ctx}\n"
+        f"NEWS HEADLINES: {news_ctx}\n"
+        f"----------------------"
+    )
+    
+    messages_payload.append({'role': 'user', 'content': f"{full_context}\n\nUSER QUERY: {user_message}"})
 
-    # 4. Run AI
+    # 4. RUN OLLAMA
     try:
         response = await asyncio.to_thread(ollama.chat, model='llama3.1', messages=messages_payload)
         bot_reply = response['message']['content']
     except Exception as e:
         print(f"AI Error: {e}")
-        bot_reply = "My connection to the market server (Ollama) failed. Please check your terminal."
+        bot_reply = "My brain (Ollama) is offline. Check your terminal."
 
-    # 5. Save to DB
+    # 5. SAVE
     user_msg_obj = ChatMessage(role="user", content=user_message)
     bot_msg_obj = ChatMessage(role="assistant", content=bot_reply)
     
@@ -166,9 +288,7 @@ async def chat_with_advisor(request: CreateChatRequest):
             }
         )
     else:
-        # Insert new session
         session_data["messages"] = [user_msg_obj.dict(), bot_msg_obj.dict()]
-        # Ensure we use the session ID we generated
         session_id = session_data["id"] 
         await chats_collection.insert_one(session_data)
 
