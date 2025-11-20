@@ -1,15 +1,16 @@
 // src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ChakraProvider, Box } from '@chakra-ui/react';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import theme from './theme'; 
+
+// Contexts
 import { AuthProvider } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { ThemeProvider } from './context/ThemeContext'; 
-import { NumberFormatProvider } from './context/NumberFormatContext'; // --- ADDED IMPORT
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { ChakraProvider } from '@chakra-ui/react';
-import { Box } from '@chakra-ui/react';
-import theme from './theme'; 
+import { NumberFormatProvider } from './context/NumberFormatContext';
 
 // Page Imports
 import Disclaimer from './pages/Disclaimer';
@@ -27,11 +28,13 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import RiskProfile from './pages/RiskProfile';
 import TaxOptimizer from './pages/TaxOptimizer';
 import SIPCalculator from './pages/SIPCalculator';
+import Portify from './pages/Portify'; // --- NEW PAGE IMPORT
 
 // Component Imports
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
+import ChatBot from './components/ChatBot'; // --- NEW COMPONENT IMPORT
 
 function App() {
   return (
@@ -39,10 +42,9 @@ function App() {
       <ChakraProvider theme={theme}>
         <AuthProvider>
           <WebSocketProvider>
-            {/* --- ADDED PROVIDER --- */}
             <NumberFormatProvider> 
                 <Router>
-                <AppContent />
+                  <AppContent />
                 </Router>
             </NumberFormatProvider>
           </WebSocketProvider>
@@ -63,6 +65,7 @@ function AppContent() {
       <Header />
       <Box as="main" flex="1" py={8} > 
         <Routes>
+          {/* Public Routes */}
           <Route path="/" element={<Navigate to="/disclaimer" />} />
           <Route path="/disclaimer" element={<Disclaimer />} />
           <Route path="/learn" element={<Learn />} />
@@ -82,10 +85,15 @@ function AppContent() {
             <Route path="/risk-profile" element={<RiskProfile />} />
             <Route path="/tax-optimizer" element={<TaxOptimizer />} />
             <Route path="/sip-calculator" element={<SIPCalculator />} />
+            <Route path="/portify" element={<Portify />} /> {/* --- NEW ROUTE */}
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Box>
+      
+      {/* Floating ChatBot - Visible on all pages */}
+      <ChatBot />
+      
       <Footer />
     </Box>
   );

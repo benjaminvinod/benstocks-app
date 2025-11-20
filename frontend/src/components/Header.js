@@ -4,7 +4,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Flex, Link, Button, Heading, Spacer, HStack } from '@chakra-ui/react';
 import ThemeSelector from './ThemeSelector'; 
-import NumberSystemSelector from './NumberSystemSelector'; // --- ADDED IMPORT
+import NumberSystemSelector from './NumberSystemSelector';
 
 function Header() {
   const { isAuthenticated, logout } = useAuth();
@@ -48,7 +48,11 @@ function Header() {
             <Link as={RouterLink} to="/learn" fontWeight="600">Learn</Link>
             <Link as={RouterLink} to="/leaderboard" fontWeight="600">Leaderboard</Link>
             
-            {/* --- ADDED NUMBER SELECTOR HERE --- */}
+            {/* --- PORTIFY LINK --- */}
+            <Link as={RouterLink} to="/portify" fontWeight="600" display="flex" alignItems="center" color="var(--brand-primary-dynamic, var(--brand-primary))">
+              Portify <span style={{fontSize:'1.2rem', marginLeft:'5px'}}>🤖</span>
+            </Link>
+            
             <NumberSystemSelector />
             <ThemeSelector /> 
             
@@ -60,7 +64,6 @@ function Header() {
           <>
             <Link as={RouterLink} to="/learn" fontWeight="600">Learn</Link>
             <Link as={RouterLink} to="/login" fontWeight="600">Log In</Link>
-            {/* --- ADDED NUMBER SELECTOR HERE --- */}
             <NumberSystemSelector />
             <ThemeSelector /> 
             <Button size="sm" onClick={() => navigate('/signup')}> 

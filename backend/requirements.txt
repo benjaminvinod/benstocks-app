@@ -24,3 +24,10 @@ websockets
 # --- Utilities ---
 # dnspython is often needed for MongoDB Atlas connections
 dnspython
+
+# Ollama LLM Model
+# Llama3.1
+ollama
+
+react-markdown
+remark-gfm

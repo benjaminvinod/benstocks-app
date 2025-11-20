@@ -2,7 +2,6 @@
 
 # We are switching from the synchronous Pymongo to the asynchronous Motor.
 from motor.motor_asyncio import AsyncIOMotorClient
-
 from config import MONGO_URI, DB_NAME
 
 # Connect to MongoDB Atlas using the asynchronous client
@@ -21,3 +20,4 @@ except Exception as e:
 users_collection = db["users"]
 portfolio_collection = db["portfolios"]
 transactions_collection = db["transactions"]
+chats_collection = db["chats"]

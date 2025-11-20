@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@chakra-ui/icons": "^1.1.1",
     "@chakra-ui/react": "^1.8.9",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -16,9 +17,11 @@
     "react-dom": "^18.2.0",
     "react-joyride": "^2.9.3",
     "react-loading-skeleton": "^3.5.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.9.4",
     "react-scripts": "5.0.1",
-    "react-toastify": "^11.0.5"
+    "react-toastify": "^11.0.5",
+    "remark-gfm": "^4.0.1"
   },
   "scripts": {
     "start": "react-scripts start",

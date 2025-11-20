@@ -2,7 +2,7 @@
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, portfolio, stocks, info, leaderboard, admin, news, mutual_funds, analytics
+from routes import auth, portfolio, stocks, info, leaderboard, admin, news, mutual_funds, analytics, chat
 from websocket_manager import manager, price_updater_task
 
 app = FastAPI(
@@ -20,18 +20,18 @@ async def startup_event():
 origins = [
     "http://localhost:3000",      # Standard React local port
     "http://127.0.0.1:3000",      # Alternative local IP
-    "http://localhost:8000",      # Backend self-reference (optional)
-    # "https://your-production-domain.com" # Add this later when you deploy!
+    "http://localhost:8000",      # Backend self-reference
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,         # CHANGED: Replaced ["*"] with specific list
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Registering all routes
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["Portfolio"])
 app.include_router(stocks.router, prefix="/stocks", tags=["Stocks"])
@@ -41,6 +41,7 @@ app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(news.router, prefix="/news", tags=["News"])
 app.include_router(mutual_funds.router, prefix="/mutual-funds", tags=["Mutual Funds"])
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+app.include_router(chat.router, prefix="/chat", tags=["AI Chat"]) # <--- NEW ROUTE ADDED
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
