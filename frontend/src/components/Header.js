@@ -2,7 +2,7 @@
 import React from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Flex, Link, Button, Heading, Spacer, HStack } from '@chakra-ui/react';
+import { Flex, Link, Button, Heading, Spacer, HStack, Image } from '@chakra-ui/react';
 import ThemeSelector from './ThemeSelector'; 
 import NumberSystemSelector from './NumberSystemSelector';
 
@@ -28,11 +28,17 @@ function Header() {
       color="var(--text-primary-dynamic, var(--text-primary))" 
       boxShadow="sm" 
     >
-      <Heading as="h1" size="lg" letterSpacing={'-.1rem'}>
-        <Link as={RouterLink} to={isAuthenticated ? "/dashboard" : "/"} _hover={{ textDecoration: 'none' }}>
-          BenStocks
-        </Link>
-      </Heading>
+      {/* --- START: MODIFIED SECTION (LOGO) --- */}
+      <Link as={RouterLink} to={isAuthenticated ? "/dashboard" : "/"} _hover={{ opacity: 0.8 }}>
+        <Image 
+            src="/logo.png" 
+            alt="BenStocks" 
+            h="100px" 
+            objectFit="contain"
+            fallbackSrc="https://placehold.co/150x40/0f172a/38bdf8?text=BenStocks" 
+        />
+      </Link>
+      {/* --- END: MODIFIED SECTION --- */}
 
       <Spacer /> 
 
