@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
-import { searchStocks } from '../api/stocks';
+import { searchStocks, getMarketSummary, getTopMovers } from '../api/stocks';
 import { formatCurrency } from '../utils/format';
 import { Pie, Line, Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler } from 'chart.js';
@@ -13,9 +13,9 @@ import { useWebSocket } from '../context/WebSocketContext';
 import {
   Box, Container, Flex, Heading, Text, SimpleGrid, Grid, GridItem,
   Input, List, ListItem, Spinner, Skeleton, Button, IconButton, Badge,
-  Table, Thead, Tbody, Tr, Th, Td, Progress
+  Table, Thead, Tbody, Tr, Th, Td, HStack, keyframes
 } from '@chakra-ui/react';
-import { SearchIcon, AddIcon, ArrowForwardIcon } from '@chakra-ui/icons';
+import { SearchIcon, AddIcon, ArrowForwardIcon, TriangleUpIcon, TriangleDownIcon } from '@chakra-ui/icons';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler);
 
@@ -44,14 +44,56 @@ const chartOptions = {
   }
 };
 
+// --- ANIMATION KEYFRAMES ---
+const marquee = keyframes`
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+`;
+
 // --- COMPONENTS ---
+
+const TickerTape = () => {
+    const [indices, setIndices] = useState([]);
+    
+    useEffect(() => {
+        // Fetch market summary on mount
+        getMarketSummary().then(data => setIndices(data || []));
+    }, []);
+
+    if (indices.length === 0) return null;
+
+    return (
+        <Box bg="blackAlpha.600" borderBottom="1px solid" borderColor="whiteAlpha.100" overflow="hidden" whiteSpace="nowrap" py={2} position="relative">
+            <Box 
+                as="div" 
+                display="inline-block" 
+                animation={`${marquee} 25s linear infinite`}
+                minW="100%"
+            >
+                <HStack spacing={12} display="inline-flex">
+                    {indices.concat(indices).map((idx, i) => (
+                        <HStack key={`${idx.symbol}-${i}`} spacing={3}>
+                            <Text fontWeight="bold" fontSize="xs" color="gray.400" textTransform="uppercase">{idx.name}</Text>
+                            <Text fontWeight="bold" fontSize="sm" color="white">
+                                {formatCurrency(idx.price, 'USD').replace('$','')}
+                            </Text>
+                            <Badge colorScheme={idx.change_percent >= 0 ? 'green' : 'red'} fontSize="xs" variant="solid">
+                                {idx.change_percent >= 0 ? '▲' : '▼'} {Math.abs(idx.change_percent).toFixed(2)}%
+                            </Badge>
+                        </HStack>
+                    ))}
+                </HStack>
+            </Box>
+        </Box>
+    );
+};
 
 const BentoCard = ({ children, title, icon, colSpan = 1, rowSpan = 1, minH = "auto", id }) => (
   <GridItem id={id} colSpan={colSpan} rowSpan={rowSpan} className="glass-panel fade-in" display="flex" flexDirection="column" overflow="hidden">
     {title && (
       <Flex align="center" p={4} borderBottom="1px solid" borderColor="whiteAlpha.100" bg="blackAlpha.200">
         {icon && <Box mr={2} color="brand.400">{icon}</Box>}
-        <Text fontSize="sm" fontWeight="600" color="gray.400" textTransform="uppercase" letterSpacing="wider">
+        <Text fontSize="xs" fontWeight="700" color="gray.400" textTransform="uppercase" letterSpacing="widest">
           {title}
         </Text>
       </Flex>
@@ -60,6 +102,20 @@ const BentoCard = ({ children, title, icon, colSpan = 1, rowSpan = 1, minH = "au
       {children}
     </Box>
   </GridItem>
+);
+
+const MoversList = ({ title, items, type }) => (
+    <Box mb={4}>
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2} textTransform="uppercase">{title}</Text>
+        {items.map(m => (
+            <Flex key={m.symbol} justify="space-between" align="center" mb={2} p={2} borderRadius="md" _hover={{bg: 'whiteAlpha.50'}}>
+                <Text fontWeight="bold" fontSize="sm">{m.symbol}</Text>
+                <Badge colorScheme={type === 'gain' ? 'green' : 'red'}>
+                    {type === 'gain' ? '+' : ''}{Math.abs(m.change).toFixed(2)}%
+                </Badge>
+            </Flex>
+        ))}
+    </Box>
 );
 
 const AllocationChart = ({ data }) => {
@@ -94,6 +150,7 @@ function Dashboard() {
     const [livePortfolioValue, setLivePortfolioValue] = useState(null);
     const [transactions, setTransactions] = useState([]);
     const [diversificationScore, setDiversificationScore] = useState(null);
+    const [movers, setMovers] = useState({ gainers: [], losers: [] });
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     
     const [symbol, setSymbol] = useState('');
@@ -102,9 +159,10 @@ function Dashboard() {
     const [runTour, setRunTour] = useState(false);
 
     const tourSteps = [
-        { target: '#hero-stat', content: 'Your total simulated Net Worth.' },
-        { target: '#holdings-table', content: 'View and manage your current stock positions here.' },
-        { target: '#quick-actions', content: 'Search and buy stocks instantly.' },
+        { target: '#hero-stat', content: 'Your total simulated Net Worth and cash balance.' },
+        { target: '#market-movers', content: 'Check the top gainers and losers of the day.' },
+        { target: '#quick-actions', content: 'Search for stocks and execute trades instantly.' },
+        { target: '#holdings-table', content: 'View and manage your current stock positions.' },
     ];
 
     useEffect(() => {
@@ -123,17 +181,19 @@ function Dashboard() {
         if (!user?.id) return;
         setIsInitialLoading(true);
         try {
-            const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes] = await Promise.all([
+            // Fetch all data in parallel
+            const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes, moversRes] = await Promise.all([
                 getPortfolio(user.id), 
                 getPortfolioLiveValue(user.id),
                 getTransactions(user.id), 
                 getDiversificationScore(user.id),
-                getWatchlist(user.id)
+                getWatchlist(user.id),
+                getTopMovers()
             ]);
 
-            // 1. Process Portfolio for Table & Chart
+            // 1. Process Portfolio for Table & Allocation Chart
             if (portfolioRes?.investments) {
-                 // Consolidate holdings by symbol
+                 // Group by symbol (consolidate multiple buys)
                  const holdingsMap = {};
                  portfolioRes.investments.forEach(inv => {
                     if (!holdingsMap[inv.symbol]) {
@@ -147,11 +207,12 @@ function Dashboard() {
                  const consolidated = Object.values(holdingsMap).map(h => ({
                      ...h,
                      avg_price: h.total_cost / h.total_qty,
-                     quantity: h.total_qty // Override quantity with total
+                     quantity: h.total_qty 
                  }));
 
                  setPortfolio(consolidated);
 
+                 // Allocation Chart Data
                  const labels = consolidated.map(inv => inv.symbol);
                  const data = consolidated.map(inv => inv.total_cost); 
                  setChartData({ 
@@ -189,6 +250,7 @@ function Dashboard() {
             if (transactionsRes) setTransactions(transactionsRes.slice(0, 5));
             if (diversificationRes) setDiversificationScore(diversificationRes);
             if (watchlistRes) setWatchlist(watchlistRes);
+            if (moversRes) setMovers(moversRes);
 
         } catch (error) { console.error(error); } 
         finally { setIsInitialLoading(false); }
@@ -226,180 +288,177 @@ function Dashboard() {
     const cashBalance = user?.balance || 0;
 
     return (
-        <Container maxW="100%" px={[4, 6, 8]} py={8}>
-            <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showSkipButton 
-                styles={{ options: { primaryColor: '#0ea5e9', backgroundColor: '#1e293b', textColor: '#fff', arrowColor: '#1e293b' } }} 
-            />
+        <Box>
+            <TickerTape /> {/* NEW: Ticker Tape at Top */}
+            <Container maxW="100%" px={[4, 6, 8]} py={8}>
+                <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showSkipButton 
+                    styles={{ options: { primaryColor: '#0ea5e9', backgroundColor: '#1e293b', textColor: '#fff', arrowColor: '#1e293b' } }} 
+                />
 
-            <Flex justify="space-between" align="center" mb={8}>
-                <Box>
-                    <Text fontSize="sm" color="gray.400">Welcome back,</Text>
-                    <Heading size="lg">{user?.username || 'Trader'}</Heading>
-                </Box>
-                <Button leftIcon={<AddIcon />} colorScheme="brand" onClick={() => document.getElementById('stock-search').focus()}>
-                    New Trade
-                </Button>
-            </Flex>
-
-            {/* --- BENTO GRID LAYOUT --- */}
-            <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={6}>
-                
-                {/* 1. HERO STAT */}
-                <BentoCard colSpan={{ base: 1, md: 2 }} title="Total Net Worth" id="hero-stat">
-                    <Flex align="center" justify="space-between" h="100%">
-                        <Box>
-                            <Text fontSize="4xl" fontWeight="bold" className="mono-font">
-                                {formatCurrency(totalValue, 'INR')}
-                            </Text>
-                            <Badge colorScheme="green" fontSize="sm" mt={2}>Live Updates 🟢</Badge> 
-                        </Box>
-                        <Box textAlign="right">
-                             <Text color="gray.400" fontSize="sm">Cash Balance</Text>
-                             <Text fontWeight="bold" fontSize="lg" className="mono-font">{formatCurrency(cashBalance, 'INR')}</Text>
-                             <Text color="gray.400" fontSize="sm" mt={2}>Invested</Text>
-                             <Text fontWeight="bold" fontSize="lg" className="mono-font">{formatCurrency(totalInvested, 'INR')}</Text>
-                        </Box>
-                    </Flex>
-                </BentoCard>
-
-                {/* 2. DIVERSIFICATION SCORE */}
-                <BentoCard title="Portfolio Health" colSpan={1}>
-                    <Flex direction="column" align="center" justify="center" h="100%">
-                        <Box position="relative" size="100px">
-                             <svg width="100" height="100" viewBox="0 0 100 100">
-                                 <circle cx="50" cy="50" r="40" stroke="#334155" strokeWidth="8" fill="transparent" />
-                                 <circle cx="50" cy="50" r="40" stroke={diversificationScore?.color || '#0ea5e9'} strokeWidth="8" fill="transparent" strokeDasharray={`${(diversificationScore?.score || 0) * 2.51} 251`} strokeDashoffset="0" transform="rotate(-90 50 50)" />
-                             </svg>
-                             <Box position="absolute" top="50%" left="50%" transform="translate(-50%, -50%)">
-                                 <Text fontWeight="bold" fontSize="xl">{diversificationScore?.score || 0}</Text>
-                             </Box>
-                        </Box>
-                        <Text mt={3} fontSize="sm" color={diversificationScore?.color} fontWeight="bold">{diversificationScore?.feedback || "Analyze"}</Text>
-                    </Flex>
-                </BentoCard>
-
-                {/* 3. QUICK ACTIONS */}
-                <BentoCard title="Quick Trade" colSpan={1} id="quick-actions">
-                    <Box position="relative">
-                        <Input 
-                            id="stock-search"
-                            placeholder="Search Ticker (e.g. AAPL)" 
-                            bg="blackAlpha.400" 
-                            border="none" 
-                            _focus={{ bg: 'blackAlpha.500', ring: 1, ringColor: 'brand.500' }}
-                            value={symbol}
-                            onChange={(e) => setSymbol(e.target.value)}
-                        />
-                        <IconButton 
-                            position="absolute" right={1} top={1} size="sm" 
-                            icon={<SearchIcon />} variant="ghost"
-                            isLoading={isSearching}
-                        />
-                        {suggestions.length > 0 && (
-                            <List position="absolute" w="100%" mt={2} bg="bg.800" borderRadius="md" boxShadow="xl" zIndex={10} border="1px solid" borderColor="whiteAlpha.200">
-                                {suggestions.map(s => (
-                                    <ListItem key={s.symbol} p={3} _hover={{ bg: 'whiteAlpha.100' }} cursor="pointer" onClick={() => navigate(`/stock/${s.symbol}`)}>
-                                        <Flex justify="space-between">
-                                            <Text fontWeight="bold">{s.symbol}</Text>
-                                            <Text fontSize="sm" color="gray.400">{s.name}</Text>
-                                        </Flex>
-                                    </ListItem>
-                                ))}
-                            </List>
-                        )}
+                <Flex justify="space-between" align="center" mb={8}>
+                    <Box>
+                        <Text fontSize="sm" color="gray.400">Command Center</Text>
+                        <Heading size="lg">{user?.username || 'Trader'}</Heading>
                     </Box>
-                    <Flex mt={4} gap={2} wrap="wrap">
-                        {['AAPL', 'TSLA', 'RELIANCE.NS', 'NIFTYBEES.NS'].map(t => (
-                            <Button key={t} size="xs" variant="outline" onClick={() => navigate(`/stock/${t}`)}>{t}</Button>
-                        ))}
-                    </Flex>
-                </BentoCard>
+                    <Button leftIcon={<AddIcon />} colorScheme="brand" onClick={() => document.getElementById('stock-search').focus()}>
+                        New Trade
+                    </Button>
+                </Flex>
 
-                {/* 4. HISTORY CHART */}
-                <BentoCard title="Performance History" colSpan={{ base: 1, md: 3 }} rowSpan={2} minH="300px" id="chart-section">
-                     {historyChartData ? <Line data={historyChartData} options={chartOptions} /> : <Flex justify="center" align="center" h="100%"><Text color="gray.500">No history data available</Text></Flex>}
-                </BentoCard>
+                {/* --- BENTO GRID LAYOUT --- */}
+                <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={6}>
+                    
+                    {/* 1. NET WORTH */}
+                    <BentoCard colSpan={{ base: 1, md: 2 }} title="Total Net Worth" id="hero-stat">
+                        <Flex align="center" justify="space-between" h="100%">
+                            <Box>
+                                <Text fontSize="4xl" fontWeight="bold" className="mono-font">
+                                    {formatCurrency(totalValue, 'INR')}
+                                </Text>
+                                <Badge colorScheme="green" mt={2}>Live Connected 🟢</Badge> 
+                            </Box>
+                            <Box textAlign="right">
+                                <Text color="gray.400" fontSize="sm">Cash</Text>
+                                <Text fontWeight="bold" fontSize="lg" className="mono-font">{formatCurrency(cashBalance, 'INR')}</Text>
+                                <Text color="gray.400" fontSize="sm" mt={1}>Invested</Text>
+                                <Text fontWeight="bold" fontSize="lg" className="mono-font">{formatCurrency(totalInvested, 'INR')}</Text>
+                            </Box>
+                        </Flex>
+                    </BentoCard>
 
-                {/* 5. ASSET ALLOCATION */}
-                <BentoCard title="Allocation" colSpan={1} rowSpan={1}>
-                    <AllocationChart data={chartData} />
-                </BentoCard>
+                    {/* 2. MARKET MOVERS (NEW TILE) */}
+                    <BentoCard title="Market Movers (Today)" colSpan={1} id="market-movers">
+                        {movers.gainers.length > 0 ? (
+                            <>
+                                <MoversList title="Top Gainers" items={movers.gainers} type="gain" />
+                                <MoversList title="Top Losers" items={movers.losers} type="loss" />
+                            </>
+                        ) : <Spinner size="sm" />}
+                    </BentoCard>
 
-                {/* 6. WATCHLIST */}
-                <BentoCard title="Watchlist" colSpan={1} rowSpan={2}>
-                    {watchlist.length === 0 ? <Text color="gray.500" fontSize="sm">No favorites yet.</Text> : (
-                        <List spacing={3}>
-                            {watchlist.slice(0, 5).map(sym => {
-                                const price = livePrices[sym];
-                                return (
-                                    <ListItem key={sym} p={2} borderRadius="md" _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${sym}`)}>
-                                        <Flex justify="space-between" align="center">
-                                            <Box>
-                                                <Text fontWeight="bold" fontSize="sm">{sym}</Text>
-                                                <Text fontSize="xs" color="gray.500">Stock</Text>
-                                            </Box>
-                                            <Text className="mono-font" fontWeight="600">
-                                                {price ? formatCurrency(price, sym.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}
-                                            </Text>
-                                        </Flex>
-                                    </ListItem>
-                                );
-                            })}
-                        </List>
-                    )}
-                    <Button mt={4} w="full" size="xs" variant="ghost" rightIcon={<ArrowForwardIcon />}>View All</Button>
-                </BentoCard>
-                
-                {/* 7. CURRENT HOLDINGS TABLE (Added Back!) */}
-                <BentoCard title="Your Holdings" colSpan={{ base: 1, md: 3 }} id="holdings-table">
-                    {portfolio.length === 0 ? (
-                        <Text color="gray.500" fontSize="sm">You don't have any investments yet.</Text>
-                    ) : (
-                        <Table variant="simple" size="sm">
-                            <Thead>
-                                <Tr>
-                                    <Th color="gray.400">Ticker</Th>
-                                    <Th color="gray.400" isNumeric>Qty</Th>
-                                    <Th color="gray.400" isNumeric>Avg Buy</Th>
-                                    <Th color="gray.400" isNumeric>Current</Th>
-                                    <Th color="gray.400" isNumeric>Return</Th>
-                                    <Th></Th>
-                                </Tr>
-                            </Thead>
-                            <Tbody>
-                                {portfolio.map((inv) => {
-                                    const currentPrice = livePrices[inv.symbol] || inv.buy_price; // Fallback
-                                    const pnl = ((currentPrice - inv.avg_price) / inv.avg_price) * 100;
-                                    const isProfitable = pnl >= 0;
-                                    const currency = inv.symbol.includes('.NS') ? 'INR' : 'USD';
+                    {/* 3. QUICK ACTIONS (Search) */}
+                    <BentoCard title="Quick Trade" colSpan={1} id="quick-actions">
+                        <Box position="relative">
+                            <Input 
+                                id="stock-search"
+                                placeholder="Search Ticker (e.g. AAPL)" 
+                                bg="blackAlpha.400" 
+                                border="none" 
+                                _focus={{ bg: 'blackAlpha.500', ring: 1, ringColor: 'brand.500' }}
+                                value={symbol}
+                                onChange={(e) => setSymbol(e.target.value)}
+                            />
+                            <IconButton 
+                                position="absolute" right={1} top={1} size="sm" 
+                                icon={<SearchIcon />} variant="ghost"
+                                isLoading={isSearching}
+                            />
+                            {suggestions.length > 0 && (
+                                <List position="absolute" w="100%" mt={2} bg="bg.800" borderRadius="md" boxShadow="xl" zIndex={10} border="1px solid" borderColor="whiteAlpha.200">
+                                    {suggestions.map(s => (
+                                        <ListItem key={s.symbol} p={3} _hover={{ bg: 'whiteAlpha.100' }} cursor="pointer" onClick={() => navigate(`/stock/${s.symbol}`)}>
+                                            <Flex justify="space-between">
+                                                <Text fontWeight="bold">{s.symbol}</Text>
+                                                <Text fontSize="sm" color="gray.400">{s.name}</Text>
+                                            </Flex>
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            )}
+                        </Box>
+                        <Flex mt={4} gap={2} wrap="wrap">
+                            {['AAPL', 'TSLA', 'RELIANCE.NS', 'NIFTYBEES.NS'].map(t => (
+                                <Button key={t} size="xs" variant="outline" onClick={() => navigate(`/stock/${t}`)}>{t}</Button>
+                            ))}
+                        </Flex>
+                    </BentoCard>
 
+                    {/* 4. HISTORY CHART */}
+                    <BentoCard title="Performance History" colSpan={{ base: 1, md: 3 }} rowSpan={2} minH="300px" id="chart-section">
+                         {historyChartData ? <Line data={historyChartData} options={chartOptions} /> : <Flex justify="center" align="center" h="100%"><Text color="gray.500">No history data available</Text></Flex>}
+                    </BentoCard>
+
+                    {/* 5. ASSET ALLOCATION */}
+                    <BentoCard title="Allocation" colSpan={1} rowSpan={1}>
+                        <AllocationChart data={chartData} />
+                    </BentoCard>
+
+                    {/* 6. WATCHLIST */}
+                    <BentoCard title="Watchlist" colSpan={1} rowSpan={2}>
+                        {watchlist.length === 0 ? <Text color="gray.500" fontSize="sm">No favorites yet.</Text> : (
+                            <List spacing={3}>
+                                {watchlist.slice(0, 5).map(sym => {
+                                    const price = livePrices[sym];
                                     return (
-                                        <Tr key={inv.symbol} _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${inv.symbol}`)}>
-                                            <Td fontWeight="bold">{inv.symbol}</Td>
-                                            <Td isNumeric className="mono-font">{inv.quantity.toFixed(2)}</Td>
-                                            <Td isNumeric className="mono-font">{formatCurrency(inv.avg_price, currency)}</Td>
-                                            <Td isNumeric className="mono-font">{livePrices[inv.symbol] ? formatCurrency(livePrices[inv.symbol], currency) : <Spinner size="xs"/>}</Td>
-                                            <Td isNumeric>
-                                                <Badge colorScheme={isProfitable ? 'green' : 'red'}>
-                                                    {isProfitable ? '+' : ''}{pnl.toFixed(2)}%
-                                                </Badge>
-                                            </Td>
-                                            <Td><IconButton size="xs" icon={<ArrowForwardIcon />} variant="ghost" /></Td>
-                                        </Tr>
+                                        <ListItem key={sym} p={2} borderRadius="md" _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${sym}`)}>
+                                            <Flex justify="space-between" align="center">
+                                                <Box>
+                                                    <Text fontWeight="bold" fontSize="sm">{sym}</Text>
+                                                    <Text fontSize="xs" color="gray.500">Stock</Text>
+                                                </Box>
+                                                <Text className="mono-font" fontWeight="600">
+                                                    {price ? formatCurrency(price, sym.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}
+                                                </Text>
+                                            </Flex>
+                                        </ListItem>
                                     );
                                 })}
-                            </Tbody>
-                        </Table>
-                    )}
-                </BentoCard>
+                            </List>
+                        )}
+                        <Button mt={4} w="full" size="xs" variant="ghost" rightIcon={<ArrowForwardIcon />}>View All</Button>
+                    </BentoCard>
+                    
+                    {/* 7. HOLDINGS TABLE */}
+                    <BentoCard title="Your Holdings" colSpan={{ base: 1, md: 3 }} id="holdings-table">
+                        {portfolio.length === 0 ? (
+                            <Text color="gray.500" fontSize="sm">You don't have any investments yet.</Text>
+                        ) : (
+                            <Table variant="simple" size="sm">
+                                <Thead>
+                                    <Tr>
+                                        <Th color="gray.400">Ticker</Th>
+                                        <Th color="gray.400" isNumeric>Qty</Th>
+                                        <Th color="gray.400" isNumeric>Avg Buy</Th>
+                                        <Th color="gray.400" isNumeric>Current</Th>
+                                        <Th color="gray.400" isNumeric>Return</Th>
+                                        <Th></Th>
+                                    </Tr>
+                                </Thead>
+                                <Tbody>
+                                    {portfolio.map((inv) => {
+                                        const currentPrice = livePrices[inv.symbol] || inv.buy_price; // Fallback
+                                        const pnl = ((currentPrice - inv.avg_price) / inv.avg_price) * 100;
+                                        const isProfitable = pnl >= 0;
+                                        const currency = inv.symbol.includes('.NS') ? 'INR' : 'USD';
 
-                {/* 8. NEWS FEED */}
-                <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 1 }}>
-                    <NewsTicker />
-                </BentoCard>
+                                        return (
+                                            <Tr key={inv.symbol} _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${inv.symbol}`)}>
+                                                <Td fontWeight="bold">{inv.symbol}</Td>
+                                                <Td isNumeric className="mono-font">{inv.quantity.toFixed(2)}</Td>
+                                                <Td isNumeric className="mono-font">{formatCurrency(inv.avg_price, currency)}</Td>
+                                                <Td isNumeric className="mono-font">{livePrices[inv.symbol] ? formatCurrency(livePrices[inv.symbol], currency) : <Spinner size="xs"/>}</Td>
+                                                <Td isNumeric>
+                                                    <Badge colorScheme={isProfitable ? 'green' : 'red'}>
+                                                        {isProfitable ? '+' : ''}{pnl.toFixed(2)}%
+                                                    </Badge>
+                                                </Td>
+                                                <Td><IconButton size="xs" icon={<ArrowForwardIcon />} variant="ghost" /></Td>
+                                            </Tr>
+                                        );
+                                    })}
+                                </Tbody>
+                            </Table>
+                        )}
+                    </BentoCard>
 
-            </Grid>
-        </Container>
+                    {/* 8. MARKET SENTIMENT (News) */}
+                    <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 1 }}>
+                        <NewsTicker />
+                    </BentoCard>
+
+                </Grid>
+            </Container>
+        </Box>
     );
 }
 

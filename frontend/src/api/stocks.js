@@ -3,7 +3,6 @@ import client from "./client";
 
 /**
  * Searches for stocks matching the query string.
- * @param {string} query - The ticker or company name to search for.
  */
 export const searchStocks = async (query) => {
   if (!query) return [];
@@ -14,13 +13,12 @@ export const searchStocks = async (query) => {
     return response.data;
   } catch (error) {
     console.error("Error searching stocks:", error);
-    return []; // Return empty array to prevent UI crashes
+    return []; 
   }
 };
 
 /**
  * Fetches live price and details for a specific symbol.
- * @param {string} symbol - The stock ticker (e.g., AAPL, RELIANCE.NS).
  */
 export const getStockPrice = async (symbol) => {
   try {
@@ -36,8 +34,6 @@ export const getStockPrice = async (symbol) => {
 
 /**
  * Fetches historical candle data for charts.
- * @param {string} symbol - The stock ticker.
- * @param {string} period - Time range (e.g., '1y', '1mo').
  */
 export const getStockHistory = async (symbol, period = '1y') => {
   try {
@@ -64,4 +60,32 @@ export const getProjection = async (amount, years, cagr) => {
     console.error("Error fetching projection:", error);
     throw error.response?.data || error;
   }
+};
+
+// --- NEW: MARKET DATA ENDPOINTS ---
+
+/**
+ * Fetches summary of major global indices (Nifty, Sensex, BTC).
+ */
+export const getMarketSummary = async () => {
+    try {
+        const response = await client.get("/stocks/market-summary");
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching market summary:", error);
+        return [];
+    }
+};
+
+/**
+ * Fetches top gainers and losers from the popular stocks list.
+ */
+export const getTopMovers = async () => {
+    try {
+        const response = await client.get("/stocks/top-movers");
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching top movers:", error);
+        return { gainers: [], losers: [] };
+    }
 };

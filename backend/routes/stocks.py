@@ -1,12 +1,33 @@
+# backend/routes/stocks.py
 import pandas as pd
 import yfinance as yf
 import requests
+import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 from utils.fetch_data import fetch_stock_data
 from utils.calculate import calculate_future_value
 
 router = APIRouter()
+
+# --- CONFIGURATION ---
+# Basket of popular stocks to scan for "Top Movers"
+POPULAR_TICKERS = [
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
+    "TATAMOTORS.NS", "SBIN.NS", "BAJFINANCE.NS", "ITC.NS", "WIPRO.NS",
+    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX"
+]
+
+# Major Indices for the Ticker Tape
+INDICES = {
+    "^NSEI": "Nifty 50",
+    "^BSESN": "Sensex",
+    "^GSPC": "S&P 500",
+    "BTC-USD": "Bitcoin",
+    "GC=F": "Gold"
+}
+
+# --- ROUTES ---
 
 @router.get("/search")
 async def search_symbols(query: str = Query(..., min_length=1, description="Search query for stock symbols")):
@@ -17,13 +38,12 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
         return []
 
     url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    headers = {'User-Agent': 'Mozilla/5.0'}
 
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         data = response.json()
-
         results = data.get("quotes", [])
 
         suggestions = []
@@ -32,7 +52,7 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
             name = result.get("longname") or result.get("shortname")
             quote_type = result.get("quoteType")
 
-            if symbol and name and quote_type == "EQUITY":
+            if symbol and name and (quote_type == "EQUITY" or quote_type == "ETF"):
                 suggestions.append({
                     "symbol": symbol,
                     "name": name
@@ -40,63 +60,110 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
 
         return suggestions[:7]
 
-    except requests.RequestException as e:
-        print(f"Error fetching from Yahoo search API: {e}")
-        raise HTTPException(status_code=503, detail="Failed to connect to financial data provider for search.")
     except Exception as e:
-        print(f"Error processing search results: {e}")
-        raise HTTPException(status_code=500, detail="Error processing search results.")
+        print(f"Error searching stocks: {e}")
+        return []
 
 
 @router.get("/price")
 async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
     """
-    Fetches the latest stock data for a given symbol, including financials.
+    Fetches the latest stock data for a given symbol.
     """
     try:
         data = fetch_stock_data(symbol)
-
         if data.get("error"):
             raise HTTPException(status_code=404, detail=data["error"])
-
-        stock_data = {
-            "symbol": data.get("symbol"),
-            "name": data.get("name"),
-            "open": data.get("open"),
-            "high": data.get("high"),
-            "low": data.get("low"),
-            "close": data.get("close"),
-            "currency": data.get("currency"),
-            "market_cap": data.get("market_cap"),
-            "pe_ratio": data.get("pe_ratio"),
-            "dividend_yield": data.get("dividend_yield"),
-            "week_52_high": data.get("week_52_high"),
-            "week_52_low": data.get("week_52_low"),
-            "recommendation": data.get("recommendation"),
-            "number_of_analysts": data.get("number_of_analysts"),
-            "target_price": data.get("target_price"),
-            "beta": data.get("beta"),
-            "sharpe_ratio": data.get("sharpe_ratio"),
-            "esg_score": data.get("esg_score"),
-            "esg_percentile": data.get("esg_percentile"),
-            # --- START: ADDED FINANCIAL METRICS ---
-            "revenue": data.get("revenue"),
-            "net_income": data.get("net_income"),
-            "total_debt": data.get("total_debt"),
-            "free_cash_flow": data.get("free_cash_flow"),
-            # --- END: ADDED FINANCIAL METRICS ---
-        }
-
-        if not all(k in stock_data and stock_data[k] is not None for k in ["open", "high", "low", "close"]):
-             print(f"Warning: Incomplete price data for {symbol}")
-
-        return stock_data
-
-    except HTTPException as http_e:
-        raise http_e
+        return data
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"Error in get_stock_price for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=f"An unexpected server error occurred.")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/market-summary")
+async def get_market_summary():
+    """
+    Fetches live data for major global indices (Nifty, Sensex, BTC, Gold).
+    Used for the dashboard Ticker Tape.
+    """
+    try:
+        tickers = list(INDICES.keys())
+        # Fetch all indices in parallel
+        data = await asyncio.to_thread(yf.download, tickers, period="1d", group_by='ticker', progress=False, threads=True)
+        
+        summary = []
+        for ticker, name in INDICES.items():
+            try:
+                # Handle yfinance multi-index structure
+                if ticker in data.columns.levels[0]:
+                    df = data[ticker]
+                else:
+                    continue 
+                
+                if not df.empty and 'Close' in df.columns:
+                    close = float(df['Close'].iloc[-1])
+                    # Use Open as fallback for prev_close if needed
+                    prev_close = float(df['Open'].iloc[-1])
+                    
+                    if pd.notna(close) and pd.notna(prev_close) and prev_close != 0:
+                        change = ((close - prev_close) / prev_close) * 100
+                        
+                        summary.append({
+                            "symbol": ticker,
+                            "name": name,
+                            "price": close,
+                            "change_percent": change
+                        })
+            except Exception as inner_e:
+                print(f"Error parsing index {ticker}: {inner_e}")
+                continue
+                
+        return summary
+    except Exception as e:
+        print(f"Market summary error: {e}")
+        return []
+
+
+@router.get("/top-movers")
+async def get_top_movers():
+    """
+    Scans the POPULAR_TICKERS list to find today's Top Gainers and Losers.
+    """
+    try:
+        # Bulk fetch data for all popular tickers
+        data = await asyncio.to_thread(yf.download, POPULAR_TICKERS, period="1d", group_by='ticker', progress=False, threads=True)
+        
+        movers = []
+        for symbol in POPULAR_TICKERS:
+            try:
+                if symbol in data.columns.levels[0]:
+                    df = data[symbol]
+                    if not df.empty and 'Close' in df.columns and 'Open' in df.columns:
+                        close = float(df['Close'].iloc[-1])
+                        open_price = float(df['Open'].iloc[-1])
+                        
+                        if pd.notna(close) and pd.notna(open_price) and open_price != 0:
+                            change = ((close - open_price) / open_price) * 100
+                            movers.append({
+                                "symbol": symbol,
+                                "price": close,
+                                "change": change
+                            })
+            except:
+                continue
+            
+        # Sort by change percentage
+        movers.sort(key=lambda x: x["change"], reverse=True)
+        
+        return {
+            "gainers": movers[:3], # Top 3 Winners
+            "losers": movers[-3:]  # Bottom 3 Losers
+        }
+    except Exception as e:
+        print(f"Top movers error: {e}")
+        return {"gainers": [], "losers": []}
+
 
 @router.get("/projection")
 async def projection(
@@ -105,7 +172,7 @@ async def projection(
     cagr: float = Query(12.0, description="Expected CAGR in %")
 ):
     """
-    Calculates the future value of an investment based on CAGR.
+    Calculates the future value of an investment.
     """
     try:
         future_value = calculate_future_value(amount, years, cagr)
@@ -118,55 +185,37 @@ async def projection(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @router.get("/history/{symbol}")
 async def get_stock_history(symbol: str, period: str = "1y"):
     """
-    Fetches historical stock data, ensuring Date is ISO format and data is clean.
-    Valid periods: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
+    Fetches historical stock data for charts.
     """
-    valid_periods = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
-    if period not in valid_periods:
-        raise HTTPException(status_code=400, detail="Invalid period specified.")
-
-    print(f"Attempting to fetch history for {symbol} ({period})")
     try:
         ticker = yf.Ticker(symbol)
-        hist = ticker.history(period=period, timeout=20)
-
+        hist = ticker.history(period=period)
+        
         if hist.empty:
-            print(f"Initial history fetch empty for {symbol}. Trying with .NS suffix.")
-            if not symbol.upper().endswith((".NS", ".BO")):
-                 ticker_ns = yf.Ticker(f"{symbol}.NS")
-                 hist = ticker_ns.history(period=period, timeout=20)
-                 if hist.empty:
-                     print(f"History fetch empty even with .NS for {symbol}.")
-                     raise HTTPException(status_code=404, detail=f"No historical data found for {symbol} or {symbol}.NS for period {period}.")
-            else:
-                 print(f"History fetch empty for {symbol} (already had suffix).")
-                 raise HTTPException(status_code=404, detail=f"No historical data found for {symbol} for period {period}.")
-
+             # Fallback: Try adding .NS suffix if missing
+             if not symbol.upper().endswith(".NS") and not symbol.upper().endswith(".BO"):
+                 ticker = yf.Ticker(f"{symbol}.NS")
+                 hist = ticker.history(period=period)
+        
+        if hist.empty:
+            raise HTTPException(status_code=404, detail="No historical data found")
+        
         hist.reset_index(inplace=True)
-
-        if 'Date' not in hist.columns:
-             raise HTTPException(status_code=500, detail="Historical data missing 'Date' column.")
-        try:
-            hist['Date'] = pd.to_datetime(hist['Date']).dt.tz_localize(None)
-            hist['Date'] = hist['Date'].apply(lambda x: x.isoformat() + "Z")
-        except Exception as date_err:
-             print(f"Error converting Date column: {date_err}")
-             raise HTTPException(status_code=500, detail="Error processing date format in historical data.")
-
-        if 'Close' not in hist.columns:
-             raise HTTPException(status_code=500, detail="Historical data missing 'Close' column.")
-
-        hist_filtered = hist[['Date', 'Close']].copy()
-        hist_filtered.dropna(subset=['Close'], inplace=True)
-        records = hist_filtered.to_dict("records")
-        print(f"Successfully fetched {len(records)} history records for {symbol} ({period})")
+        
+        records = []
+        for index, row in hist.iterrows():
+            records.append({
+                "Date": row['Date'].isoformat(),
+                "Close": row['Close']
+            })
         return records
 
-    except HTTPException as http_exc:
-        raise http_exc
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"Unexpected error fetching history for {symbol} ({period}): {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve historical data: An unexpected error occurred.")
+        print(f"History error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch history")
