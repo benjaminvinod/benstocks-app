@@ -8,6 +8,8 @@ import { formatCurrency } from '../utils/format';
 import BackButton from '../components/BackButton';
 import { toast } from 'react-toastify';
 import { DIVIDEND_ETFS } from '../utils/dividendAssets';
+// --- ADDED: Chakra UI Imports ---
+import { Box, Heading, FormControl, FormLabel, Select, Input, Button } from '@chakra-ui/react';
 
 // --- START: MODIFIED CODE ---
 // This is the new, curated list of highly reliable and popular ETFs.
@@ -76,21 +78,61 @@ function ETFs() {
                 <p>Invest a lump sum amount into Exchange Traded Funds. Prices are live.</p>
             </div>
 
-            {/* Form to buy ETFs */}
-            <form onSubmit={handleBuy} style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
-                <h3>New ETF Investment</h3>
-                <div className="form-group">
-                    <label htmlFor="fund">Choose an ETF</label>
-                    <select id="fund" value={selectedFund} onChange={(e) => setSelectedFund(e.target.value)}>
-                        {popularETFs.map(fund => (<option key={fund.symbol} value={fund.symbol}>{fund.name} ({fund.symbol})</option>))}
-                    </select>
-                </div>
-                <div className="form-group">
-                    <label htmlFor="amount">Amount to Invest (₹)</label>
-                    <input type="number" id="amount" value={amount} min="100" step="100" onChange={(e) => setAmount(Number(e.target.value))} />
-                </div>
-                <button type="submit" disabled={loading}>{loading ? 'Investing...' : 'Invest Now'}</button>
-            </form>
+            {/* FIXED FORM: Uses Chakra UI components for correct Dark Mode styling */}
+            <Box 
+                as="form" 
+                onSubmit={handleBuy} 
+                bg="var(--bg-secondary-dynamic, var(--bg-dark-secondary))" 
+                p={6} 
+                borderRadius="lg" 
+                mb={8} 
+                border="1px solid var(--border-color)"
+            >
+                <Heading size="md" mb={4} color="var(--text-primary)">New ETF Investment</Heading>
+                
+                <FormControl mb={4}>
+                    <FormLabel>Choose an ETF</FormLabel>
+                    <Select 
+                        value={selectedFund} 
+                        onChange={(e) => setSelectedFund(e.target.value)}
+                        bg="var(--bg-dark-primary)"
+                        borderColor="var(--border-color)"
+                    >
+                        {popularETFs.map(fund => (
+                            <option 
+                                key={fund.symbol} 
+                                value={fund.symbol}
+                                style={{ backgroundColor: '#1e293b', color: 'white' }} // Ensures dropdown items are visible
+                            >
+                                {fund.name} ({fund.symbol})
+                            </option>
+                        ))}
+                    </Select>
+                </FormControl>
+
+                <FormControl mb={4}>
+                    <FormLabel>Amount to Invest (₹)</FormLabel>
+                    <Input 
+                        type="number" 
+                        value={amount} 
+                        min="100" 
+                        step="100" 
+                        onChange={(e) => setAmount(Number(e.target.value))} 
+                        bg="var(--bg-dark-primary)"
+                        borderColor="var(--border-color)"
+                    />
+                </FormControl>
+
+                <Button 
+                    type="submit" 
+                    isLoading={loading} 
+                    width="full" 
+                    colorScheme="blue"
+                    loadingText="Investing..."
+                >
+                    Invest Now
+                </Button>
+            </Box>
 
             <h2>Available ETFs</h2>
             {/* Displaying the list of ETFs */}
