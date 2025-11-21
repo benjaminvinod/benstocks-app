@@ -3,11 +3,13 @@ import pandas as pd
 import yfinance as yf
 import requests
 import asyncio
+import random
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
 from utils.fetch_data import fetch_stock_data
 from utils.calculate import calculate_future_value
+from utils.simulate_nav import SIMULATED_FUNDS_DATA, get_simulated_nav
 
 router = APIRouter()
 
@@ -74,15 +76,47 @@ async def search_symbols(query: str = Query(..., min_length=1, description="Sear
 @router.get("/price")
 async def get_stock_price(symbol: str = Query(..., description="Stock symbol")):
     """
-    Fetches the latest stock data for a given symbol, including financials.
+    Fetches the latest stock data for a given symbol.
+    Handles both Real Stocks (Yahoo) and Simulated Mutual Funds.
     """
+    upper_symbol = symbol.upper()
+
+    # 1. INTERCEPT SIMULATED FUNDS
+    if upper_symbol in SIMULATED_FUNDS_DATA:
+        try:
+            fund_info = SIMULATED_FUNDS_DATA[upper_symbol]
+            nav = get_simulated_nav(upper_symbol) or fund_info["baseNav"]
+            
+            # Construct a response that looks exactly like real stock data
+            # so the frontend (StockDetails.js) can render it without errors.
+            return {
+                "symbol": upper_symbol,
+                "name": fund_info["name"],
+                "currency": "INR",
+                "close": nav,
+                # Fill other fields with dummy/safe data for display
+                "open": nav, 
+                "high": nav, 
+                "low": nav,
+                "market_cap": None,
+                "pe_ratio": None,
+                "dividend_yield": None,
+                "week_52_high": nav * 1.15,
+                "week_52_low": nav * 0.85,
+                "recommendation": "BUY",
+                "description": fund_info.get("category", "Mutual Fund")
+            }
+        except Exception as e:
+             print(f"Error generating simulated data for {upper_symbol}: {e}")
+             raise HTTPException(status_code=500, detail="Simulated fund error")
+
+    # 2. FETCH REAL STOCK DATA
     try:
         data = fetch_stock_data(symbol)
 
         if data.get("error"):
             raise HTTPException(status_code=404, detail=data["error"])
 
-        # We return the full data object as the frontend expects all fields (PE, Beta, etc.)
         return data
 
     except HTTPException as http_e:
@@ -105,7 +139,6 @@ async def get_market_summary():
         summary = []
         for ticker, name in INDICES.items():
             try:
-                # Handle yfinance multi-index structure
                 if ticker in data.columns.levels[0]:
                     df = data[ticker]
                 else:
@@ -113,7 +146,6 @@ async def get_market_summary():
                 
                 if not df.empty and 'Close' in df.columns:
                     close = float(df['Close'].iloc[-1])
-                    # Use Open as fallback for prev_close if needed
                     prev_close = float(df['Open'].iloc[-1])
                     if pd.isna(prev_close): prev_close = close
                     
@@ -197,7 +229,66 @@ async def projection(
 async def get_stock_history(symbol: str, period: str = "1y"):
     """
     Fetches historical stock data in OHLC format for Candlestick charts.
+    Handles Simulated Mutual Funds by generating a synthetic history.
     """
+    upper_symbol = symbol.upper()
+
+    # 1. SIMULATED HISTORY FOR MUTUAL FUNDS
+    if upper_symbol in SIMULATED_FUNDS_DATA:
+        try:
+            current_nav = get_simulated_nav(upper_symbol) or SIMULATED_FUNDS_DATA[upper_symbol]["baseNav"]
+            
+            # Generate synthetic history walking backwards from current NAV
+            # This creates a realistic-looking "random walk" chart
+            records = []
+            current_sim_price = current_nav
+            today = datetime.now()
+            
+            # Determine days based on period
+            days_to_generate = 30
+            if period == '3mo': days_to_generate = 90
+            elif period == '6mo': days_to_generate = 180
+            elif period == '1y': days_to_generate = 365
+            elif period == '2y': days_to_generate = 730
+            elif period == '5y': days_to_generate = 1825
+
+            # We generate prices in reverse (Today -> Past) then flip the list
+            price_series = [current_sim_price]
+            for _ in range(days_to_generate):
+                # Random daily fluctuation between -1.5% and +1.5%
+                change = random.uniform(-0.015, 0.015) 
+                # Calculate previous day's price
+                prev_price = price_series[-1] / (1 + change)
+                price_series.append(prev_price)
+            
+            # Reverse to be Chronological (Past -> Today)
+            price_series.reverse()
+            start_date = today - timedelta(days=len(price_series))
+
+            for i, price in enumerate(price_series):
+                # Create fake High/Low/Open for the candlestick effect
+                volatility = price * 0.008 # 0.8% intra-day movement
+                
+                open_p = price + random.uniform(-volatility, volatility)
+                close_p = price
+                high_p = max(open_p, close_p) + random.uniform(0, volatility)
+                low_p = min(open_p, close_p) - random.uniform(0, volatility)
+
+                records.append({
+                    "time": (start_date + timedelta(days=i)).strftime('%Y-%m-%d'),
+                    "open": round(open_p, 2),
+                    "high": round(high_p, 2),
+                    "low": round(low_p, 2),
+                    "close": round(close_p, 2)
+                })
+            
+            return records
+
+        except Exception as e:
+            print(f"Error generating simulated history for {upper_symbol}: {e}")
+            raise HTTPException(status_code=500, detail="Simulated history error")
+
+    # 2. REAL HISTORY FOR STOCKS
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period)
@@ -240,7 +331,6 @@ async def run_backtest(symbol: str, years: int = 5, amount: float = 100000):
     """
     try:
         ticker = yf.Ticker(symbol)
-        # Fetch history slightly longer than needed to be safe
         start_date = (datetime.now() - timedelta(days=years*365 + 30)).strftime('%Y-%m-%d')
         hist = ticker.history(start=start_date)
         
@@ -258,10 +348,8 @@ async def run_backtest(symbol: str, years: int = 5, amount: float = 100000):
         quantity = amount / buy_price
         final_value = quantity * current_price
         total_return = ((final_value - amount) / amount) * 100
-        # Simple CAGR calculation
         cagr = ((final_value / amount) ** (1/years) - 1) * 100
 
-        # Comparison: Fixed Deposit (~6% avg) & Gold (~10% avg)
         fd_value = amount * ((1 + 0.06) ** years)
         gold_value = amount * ((1 + 0.10) ** years)
 
