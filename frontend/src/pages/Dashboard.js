@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
 import { searchStocks, getMarketSummary, getTopMovers } from '../api/stocks';
+import client from '../api/client'; // Import client for email requests
 import { formatCurrency } from '../utils/format';
 import { Doughnut, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler } from 'chart.js';
@@ -13,9 +14,10 @@ import { useWebSocket } from '../context/WebSocketContext';
 import {
   Box, Container, Flex, Heading, Text, SimpleGrid, Grid, GridItem,
   Input, List, ListItem, Spinner, Skeleton, Button, IconButton, Badge,
-  Table, Thead, Tbody, Tr, Th, Td, HStack, keyframes
+  Table, Thead, Tbody, Tr, Th, Td, HStack, keyframes, useToast,
+  Select, Switch, FormControl, FormLabel, Radio, RadioGroup, Stack
 } from '@chakra-ui/react';
-import { SearchIcon, AddIcon, ArrowForwardIcon } from '@chakra-ui/icons';
+import { SearchIcon, AddIcon, ArrowForwardIcon, EmailIcon, DownloadIcon } from '@chakra-ui/icons';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler);
 
@@ -51,22 +53,11 @@ const marquee = keyframes`
 `;
 
 // --- HELPER: CURRENCY DETECTION ---
-// Determines the correct currency symbol based on the ticker
 const getCurrency = (symbol) => {
     const s = symbol?.toUpperCase() || '';
-    
-    // 1. Indian Stocks / ETFs (Standard suffix)
     if (s.endsWith('.NS') || s.endsWith('.BO')) return 'INR';
-    
-    // 2. Crypto (Standard suffix)
     if (s.endsWith('-USD')) return 'USD';
-    
-    // 3. Simulated Mutual Funds
-    // Heuristic: Most contain a hyphen (e.g. 'SBI-BLUE') but aren't crypto,
-    // or are specific codes like 'UTINIFTY'.
     if (s.includes('-') || s === 'UTINIFTY') return 'INR';
-    
-    // 4. Default to USD (Standard US Stocks like AAPL, TSLA)
     return 'USD';
 };
 
@@ -162,6 +153,7 @@ function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { livePrices } = useWebSocket();
+    const toast = useToast();
     
     const [portfolio, setPortfolio] = useState([]);
     const [watchlist, setWatchlist] = useState([]); 
@@ -179,10 +171,19 @@ function Dashboard() {
     const [isSearching, setIsSearching] = useState(false);
     const [runTour, setRunTour] = useState(false);
 
+    // --- EMAIL REPORTS STATE ---
+    const [emailSettings, setEmailSettings] = useState({
+        frequency: 'MANUAL', 
+        format: 'TEXT',      
+        enabled: false
+    });
+    const [sendingEmail, setSendingEmail] = useState(false);
+
     const tourSteps = [
         { target: '#hero-stat', content: 'Your total simulated Net Worth.' },
         { target: '#market-movers', content: 'Check top gainers and losers.' },
         { target: '#holdings-table', content: 'Your current stock and mutual fund positions.' },
+        { target: '#reports-section', content: 'Generate PDF Reports of your portfolio here!' }
     ];
 
     useEffect(() => {
@@ -210,12 +211,10 @@ function Dashboard() {
                 getTopMovers()
             ]);
 
-            // 1. Extract Mutual Fund Prices from Backend Calculation
             if (liveValueRes?.investment_details && portfolioRes?.investments) {
                 const calculatedPrices = {};
                 portfolioRes.investments.forEach(inv => {
                     const details = liveValueRes.investment_details[inv.id];
-                    // If backend gives a value, calculate unit price (Value / Quantity)
                     if (details && details.live_value_inr && inv.quantity > 0) {
                         calculatedPrices[inv.symbol] = details.live_value_inr / inv.quantity;
                     }
@@ -223,7 +222,6 @@ function Dashboard() {
                 setFallbackPrices(calculatedPrices);
             }
 
-            // 2. Process Portfolio
             if (portfolioRes?.investments) {
                  const holdingsMap = {};
                  portfolioRes.investments.forEach(inv => {
@@ -255,7 +253,6 @@ function Dashboard() {
                  });
             }
 
-            // 3. History
             const historyData = liveValueRes.history || [];
             if (historyData.length > 0) {
                 setHistoryChartData({
@@ -297,6 +294,29 @@ function Dashboard() {
         }, 300);
         return () => clearTimeout(timer);
     }, [symbol]);
+
+    // --- REPORT HANDLERS ---
+    const handleManualEmail = async () => {
+        setSendingEmail(true);
+        try {
+            await client.post(`/analytics/send-tax-report/${user.id}`, {
+                format: emailSettings.format,
+                frequency: 'MANUAL'
+            });
+            toast({ title: `Report Sent!`, description: `Check your inbox for the ${emailSettings.format} report.`, status: "success", duration: 5000 });
+        } catch (error) {
+            toast({ title: "Email Failed", description: "Could not send email. Check backend logs.", status: "error" });
+        }
+        setSendingEmail(false);
+    };
+
+    const handleFrequencyChange = (e) => {
+        const newFreq = e.target.value;
+        setEmailSettings({ ...emailSettings, frequency: newFreq });
+        if (newFreq === 'MANUAL') {
+            toast({ title: "Manual Mode Selected", description: "Use the 'Send Now' button to trigger emails.", status: "info", duration: 3000 });
+        }
+    };
 
     if (isInitialLoading) {
         return (
@@ -436,9 +456,7 @@ function Dashboard() {
                                 </Thead>
                                 <Tbody>
                                     {portfolio.map((inv) => {
-                                        // Check WebSocket First -> Then Fallback (Mutual Funds) -> Then Buy Price
                                         const currentPrice = livePrices[inv.symbol] || fallbackPrices[inv.symbol] || inv.buy_price;
-                                        
                                         const pnl = ((currentPrice - inv.avg_price) / inv.avg_price) * 100;
                                         const isProfitable = pnl >= 0;
                                         const currency = getCurrency(inv.symbol);
@@ -467,7 +485,61 @@ function Dashboard() {
                         )}
                     </BentoCard>
 
-                    <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 1 }}>
+                    {/* --- REPORTS & ALERTS CARD --- */}
+                    <BentoCard title="Reports & Alerts" colSpan={1} id="reports-section" icon={<EmailIcon />}>
+                        <Stack spacing={3}>
+                            <FormControl display="flex" alignItems="center">
+                                <FormLabel htmlFor="email-alerts" mb="0" fontSize="sm">
+                                    Auto-Send?
+                                </FormLabel>
+                                <Switch 
+                                    id="email-alerts" 
+                                    size="sm"
+                                    isChecked={emailSettings.enabled} 
+                                    onChange={(e) => setEmailSettings({...emailSettings, enabled: e.target.checked})}
+                                    colorScheme="green" 
+                                />
+                            </FormControl>
+
+                            <Select 
+                                size="xs"
+                                value={emailSettings.frequency}
+                                onChange={handleFrequencyChange}
+                                bg="whiteAlpha.100"
+                                disabled={!emailSettings.enabled}
+                            >
+                                <option value="DAILY" style={{color:'black'}}>Daily Brief</option>
+                                <option value="WEEKLY" style={{color:'black'}}>Weekly (Mon)</option>
+                                <option value="MONTHLY" style={{color:'black'}}>Monthly (1st)</option>
+                                <option value="MANUAL" style={{color:'black'}}>Manual Only</option>
+                            </Select>
+
+                            <RadioGroup 
+                                size="sm"
+                                value={emailSettings.format} 
+                                onChange={(val) => setEmailSettings({...emailSettings, format: val})}
+                            >
+                                <Stack direction="row">
+                                    <Radio value="TEXT">Text</Radio>
+                                    <Radio value="PDF">PDF</Radio>
+                                </Stack>
+                            </RadioGroup>
+
+                            <Button 
+                                size="sm"
+                                leftIcon={<DownloadIcon />} 
+                                colorScheme="brand" 
+                                onClick={handleManualEmail}
+                                isLoading={sendingEmail}
+                                width="full"
+                            >
+                                Send Now
+                            </Button>
+                        </Stack>
+                    </BentoCard>
+
+                    {/* --- MARKET SENTIMENT (NEWS) - ADDED BACK --- */}
+                    <BentoCard title="Global Market Sentiment" colSpan={{ base: 1, md: 4 }}>
                         <NewsTicker />
                     </BentoCard>
 
