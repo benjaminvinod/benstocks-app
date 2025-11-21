@@ -29,20 +29,20 @@ STOP_WORDS = {
     "SHOULD", "I", "MY", "PORTFOLIO", "THINK"
 }
 
-# --- ENHANCED SYSTEM PROMPT (ROAST MODE ACTIVATED) ---
+# --- ENHANCED SYSTEM PROMPT (ROAST MODE + PRO TRADER) ---
 ENHANCED_SYSTEM_PROMPT = """
 You are Portify, a witty, sharp-tongued Wall Street veteran and the user's financial wingman.
 Your goal is to help them win the BenStocks simulation.
 
 ### YOUR PERSONALITY
 - **Direct & Punchy:** Don't waffle. Get to the point.
-- **Witty & Sarcastic:** If the user owns bad stocks (high losses, terrible P/E), gently roast them. (e.g., "Holding this stock is a bold strategy... let's see if it pays off.").
-- **Not a Robot:** Use emojis (🚀, 📉, 🤡, 💰) and casual trader slang (HODL, Bagholder, Mooning).
-- **Educator:** When mentioning technicals (RSI, Trends), explain them simply. (e.g., "RSI is 80, which means it's overbought/expensive right now.").
+- **Witty & Sarcastic:** If the user owns bad stocks (high losses, terrible P/E), gently roast them.
+- **Not a Robot:** Use emojis (🚀, 📉, 🤡, 💰) and casual trader slang (HODL, Bagholder, Mooning, Dead Cat Bounce).
+- **Analyst:** Use the provided MACD, RSI, and Bollinger Bands to justify your view. (e.g., "MACD is bearish, so don't catch the falling knife.").
 
 ### YOUR DATA SOURCES (Use these strict priorities)
-1. **User's Portfolio:** Check if they OWN the stock they are asking about. Tailor advice to their position.
-2. **Technical Analysis:** Use the provided RSI and Trend data to give timing advice.
+1. **User's Portfolio:** Check if they OWN the stock. Tailor advice to their position.
+2. **Technical Analysis:** Use RSI (Overbought > 70, Oversold < 30), MACD (Crossovers), and Bollinger Bands (Volatility).
 3. **News:** Reference the provided headlines if relevant.
 
 ### HALLUCINATION PROTOCOL
@@ -50,13 +50,13 @@ Your goal is to help them win the BenStocks simulation.
 - If you assumed a ticker (e.g., AAPL for "Apple"), mention it: "I'm looking at Apple Inc (AAPL)..."
 """
 
-# --- TECHNICAL ANALYSIS ENGINE ---
+# --- ADVANCED TECHNICAL ANALYSIS ENGINE ---
 def calculate_technicals(history_df):
-    """Calculates RSI and simple trend from a pandas DataFrame."""
-    if history_df.empty or len(history_df) < 15:
+    """Calculates RSI, Trend, MACD, and Bollinger Bands."""
+    if history_df.empty or len(history_df) < 26:
         return "Not enough data for technicals."
 
-    # 1. Calculate RSI (14-day)
+    # 1. RSI (14-day)
     delta = history_df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -66,18 +66,45 @@ def calculate_technicals(history_df):
     current_rsi = rsi.iloc[-1]
     
     rsi_verdict = "Neutral"
-    if current_rsi > 70: rsi_verdict = "Overbought (Expensive)"
-    elif current_rsi < 30: rsi_verdict = "Oversold (Cheap/Dip)"
+    if current_rsi > 70: rsi_verdict = "Overbought (Sell Signal?)"
+    elif current_rsi < 30: rsi_verdict = "Oversold (Buy Dip?)"
 
-    # 2. Trend (SMA 50 check)
-    # If we have enough data, check if price is above 50-day average
+    # 2. Trend (SMA 50)
     trend = "Sideways"
     if len(history_df) > 50:
         sma_50 = history_df['Close'].rolling(window=50).mean().iloc[-1]
         current_price = history_df['Close'].iloc[-1]
         trend = "Uptrend 🐂" if current_price > sma_50 else "Downtrend 🐻"
 
-    return f"RSI: {current_rsi:.1f} ({rsi_verdict}) | Trend: {trend}"
+    # 3. MACD (12, 26, 9)
+    # MACD Line = 12 EMA - 26 EMA
+    # Signal Line = 9 EMA of MACD
+    exp1 = history_df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = history_df['Close'].ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+    
+    curr_macd = macd.iloc[-1]
+    curr_sig = signal.iloc[-1]
+    macd_verdict = "Bullish Crossover 🟢" if curr_macd > curr_sig else "Bearish Crossover 🔴"
+
+    # 4. Bollinger Bands (20, 2)
+    sma_20 = history_df['Close'].rolling(window=20).mean()
+    std_20 = history_df['Close'].rolling(window=20).std()
+    upper_band = sma_20 + (std_20 * 2)
+    lower_band = sma_20 - (std_20 * 2)
+    
+    current_price = history_df['Close'].iloc[-1]
+    bb_status = "Normal"
+    if current_price > upper_band.iloc[-1]: bb_status = "Breaking Out (High)"
+    if current_price < lower_band.iloc[-1]: bb_status = "Oversold (Low)"
+
+    return (
+        f"RSI: {current_rsi:.1f} ({rsi_verdict}) | "
+        f"Trend: {trend} | "
+        f"MACD: {macd_verdict} | "
+        f"Bollinger: {bb_status}"
+    )
 
 # --- SMART SEARCH & DATA FETCHING ---
 
@@ -171,8 +198,8 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
         def fetch_full_analysis(symbol):
             try:
                 ticker = yf.Ticker(symbol)
-                # Get 2mo history for RSI calculation
-                hist = ticker.history(period="2mo")
+                # Get 3mo history for MACD calculation (need >26 days)
+                hist = ticker.history(period="3mo")
                 info = ticker.info or {}
                 
                 if hist.empty: return None
