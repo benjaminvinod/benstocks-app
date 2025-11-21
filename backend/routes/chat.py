@@ -7,8 +7,11 @@ import numpy as np
 from datetime import datetime
 from typing import List, Optional
 
-import ollama
+# --- NEW IMPORTS FOR STREAMING ---
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from ollama import AsyncClient
+
 from database import chats_collection
 from models.chat_model import ChatSession, ChatMessage, CreateChatRequest
 from routes.portfolio import get_portfolio
@@ -77,8 +80,6 @@ def calculate_technicals(history_df):
         trend = "Uptrend 🐂" if current_price > sma_50 else "Downtrend 🐻"
 
     # 3. MACD (12, 26, 9)
-    # MACD Line = 12 EMA - 26 EMA
-    # Signal Line = 9 EMA of MACD
     exp1 = history_df['Close'].ewm(span=12, adjust=False).mean()
     exp2 = history_df['Close'].ewm(span=26, adjust=False).mean()
     macd = exp1 - exp2
@@ -149,7 +150,6 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
         if pf.investments:
             holdings_desc = []
             for inv in pf.investments:
-                # Calculate simplistic P/L status for context
                 status = "New"
                 user_holdings_map[inv.symbol] = inv
                 holdings_desc.append(f"{inv.symbol} ({inv.quantity} units)")
@@ -191,14 +191,12 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
     if not detected_tickers:
         market_data_str = "[No specific ticker identified in query]"
     else:
-        # Use asyncio.to_thread to fetch data without blocking
-        # We need a custom fetcher here to get HISTORY for Technicals
         import yfinance as yf
         
         def fetch_full_analysis(symbol):
             try:
                 ticker = yf.Ticker(symbol)
-                # Get 3mo history for MACD calculation (need >26 days)
+                # Get 3mo history for MACD calculation
                 hist = ticker.history(period="3mo")
                 info = ticker.info or {}
                 
@@ -207,7 +205,6 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
                 current_price = hist['Close'].iloc[-1]
                 technicals = calculate_technicals(hist)
                 
-                # Check if user owns it
                 holding_info = ""
                 if symbol in user_holdings_map:
                     inv = user_holdings_map[symbol]
@@ -244,7 +241,7 @@ async def get_chat_history(session_id: str):
     session = await chats_collection.find_one({"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    session["_id"] = str(session["_id"]) # Fix serialization
+    session["_id"] = str(session["_id"])
     return session
 
 @router.delete("/{session_id}")
@@ -254,6 +251,10 @@ async def delete_chat_session(session_id: str):
 
 @router.post("/")
 async def chat_with_advisor(request: CreateChatRequest):
+    """
+    Phase 2: Streaming Response Implementation.
+    Returns a Server-Sent Stream of text while saving history in the background.
+    """
     user_id = request.user_id
     raw_message = request.message
     session_id = request.session_id
@@ -261,7 +262,7 @@ async def chat_with_advisor(request: CreateChatRequest):
     if not raw_message: raise HTTPException(status_code=400, detail="Empty message")
     user_message = re.sub(r'[^\w\s.,?!@#$%^&*()\-]', '', raw_message).strip()
 
-    # 1. Manage Session
+    # 1. Manage Session (Create Immediately if New)
     session_data = None
     if session_id:
         session_data = await chats_collection.find_one({"id": session_id})
@@ -270,20 +271,20 @@ async def chat_with_advisor(request: CreateChatRequest):
         title = " ".join(user_message.split()[:5]) + "..."
         new_session = ChatSession(user_id=user_id, title=title)
         session_data = new_session.dict()
+        await chats_collection.insert_one(session_data)
+        session_id = session_data["id"]
 
-    # 2. GATHER INTELLIGENCE (Portfolio + Market + News)
+    # 2. GATHER INTELLIGENCE
     portfolio_ctx, news_ctx, market_ctx = await resolve_context_and_fetch(user_message, user_id)
 
     # 3. CONSTRUCT PROMPT
     messages_payload = [{'role': 'system', 'content': ENHANCED_SYSTEM_PROMPT}]
     messages_payload.extend(FEW_SHOT_EXAMPLES)
     
-    # Add Conversation History
     previous_msgs = session_data.get("messages", [])
     for m in previous_msgs[-6:]: 
         messages_payload.append({"role": m["role"], "content": m["content"]})
 
-    # Inject Data Context
     full_context = (
         f"--- REAL-TIME DATA ---\n"
         f"USER PORTFOLIO: {portfolio_ctx}\n"
@@ -291,34 +292,36 @@ async def chat_with_advisor(request: CreateChatRequest):
         f"NEWS HEADLINES: {news_ctx}\n"
         f"----------------------"
     )
-    
     messages_payload.append({'role': 'user', 'content': f"{full_context}\n\nUSER QUERY: {user_message}"})
 
-    # 4. RUN OLLAMA (WITH RETRY LOGIC)
-    # This loop attempts to call Ollama 3 times.
-    # If the model is loading (Cold Start), the first attempt fails, we wait, and try again.
-    bot_reply = "My brain (Ollama) is offline. Check your terminal."
-    
-    for attempt in range(3): # Try up to 3 times
-        try:
-            # We run this in a thread to prevent blocking the main server
-            response = await asyncio.to_thread(ollama.chat, model='llama3.1', messages=messages_payload)
-            bot_reply = response['message']['content']
-            break # Success! Exit the loop
-        except Exception as e:
-            print(f"AI Error (Attempt {attempt+1}/3): {e}")
-            if attempt < 2:
-                # Wait 2 seconds before retrying to give the model time to load into RAM
-                await asyncio.sleep(2)
-            else:
-                # If it fails 3 times, keep the default error message
-                print("Ollama failed after 3 attempts. Is the service running?")
+    # 4. STREAM GENERATOR WITH RETRY
+    async def response_generator():
+        full_reply = ""
+        client = AsyncClient() # Use Async Ollama Client
+        stream_started = False
+        
+        for attempt in range(3): # Retry loop for Cold Start
+            try:
+                async for part in await client.chat(model='llama3.1', messages=messages_payload, stream=True):
+                    stream_started = True
+                    chunk = part['message']['content']
+                    full_reply += chunk
+                    yield chunk
+                break # Success
+            except Exception as e:
+                print(f"Stream Error (Attempt {attempt+1}): {e}")
+                if stream_started:
+                    yield f"\n[Connection Error: {e}]"
+                    break
+                else:
+                    await asyncio.sleep(2) # Wait for model load
+                    if attempt == 2:
+                        yield "My brain (Ollama) is offline. Check terminal."
 
-    # 5. SAVE
-    user_msg_obj = ChatMessage(role="user", content=user_message)
-    bot_msg_obj = ChatMessage(role="assistant", content=bot_reply)
-    
-    if session_id and await chats_collection.find_one({"id": session_id}):
+        # 5. SAVE TO DB (After stream finishes)
+        user_msg_obj = ChatMessage(role="user", content=user_message)
+        bot_msg_obj = ChatMessage(role="assistant", content=full_reply)
+        
         await chats_collection.update_one(
             {"id": session_id}, 
             {
@@ -326,9 +329,13 @@ async def chat_with_advisor(request: CreateChatRequest):
                 "$set": {"updated_at": datetime.utcnow()}
             }
         )
-    else:
-        session_data["messages"] = [user_msg_obj.dict(), bot_msg_obj.dict()]
-        session_id = session_data["id"] 
-        await chats_collection.insert_one(session_data)
 
-    return {"response": bot_reply, "session_id": session_id, "title": session_data["title"]}
+    # Return Streaming Response with Session Metadata in Headers
+    return StreamingResponse(
+        response_generator(), 
+        media_type="text/plain",
+        headers={
+            "X-Session-Id": session_id,
+            "X-Title": session_data["title"]
+        }
+    )

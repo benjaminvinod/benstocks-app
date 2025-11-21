@@ -8,6 +8,10 @@ import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import BackButton from '../components/BackButton';
 
+// Define Base URL locally or import from config. 
+// Matching client.js logic:
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
 function Portify() {
     const { user } = useAuth();
     const [sessions, setSessions] = useState([]);
@@ -16,6 +20,7 @@ function Portify() {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const endRef = useRef(null);
+    const abortControllerRef = useRef(null); // To cancel stream if needed
 
     // 1. Load Session List on Mount & Auto-Select Latest
     useEffect(() => {
@@ -75,42 +80,95 @@ function Portify() {
         }
     };
 
+    // --- STREAMING HANDLER ---
     const handleSend = async () => {
         if (!input.trim()) return;
-        const userMsg = { role: 'user', content: input };
+
+        const userText = input;
+        setInput(''); // Clear input immediately
         
-        // Optimistic UI Update
+        // 1. Add User Message to UI
+        const userMsg = { role: 'user', content: userText };
         setMessages(prev => [...prev, userMsg]);
-        setInput('');
+
+        // 2. Add Placeholder Bot Message
+        // We add an empty string so we can append chunks to it later
+        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+        
         setLoading(true);
+        
+        // Abort previous request if any
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
 
         try {
-            const res = await client.post('/chat/', {
-                user_id: user.id,
-                message: userMsg.content,
-                session_id: currentSessionId // Send null if new, ID if existing
+            // We use fetch() instead of axios to handle streams properly
+            const response = await fetch(`${BASE_URL}/chat/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Manually attach token since we aren't using the axios client here
+                    'Authorization': `Bearer ${user.token || localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    user_id: user.id,
+                    message: userText,
+                    session_id: currentSessionId
+                }),
+                signal: abortControllerRef.current.signal
             });
-            
-            const botMsg = { role: 'assistant', content: res.data.response };
-            setMessages(prev => [...prev, botMsg]);
-            
-            // CRITICAL FIX: If we just started a new chat, the backend created a session.
-            // We must save that ID so the next message goes to the SAME session.
-            if (!currentSessionId && res.data.session_id) {
-                setCurrentSessionId(res.data.session_id);
-                // Refresh sidebar to show the new auto-generated title
-                fetchSessions(); 
+
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            // 3. Handle Session Metadata (Sent in Headers)
+            const newSessionId = response.headers.get('X-Session-Id');
+            if (newSessionId && !currentSessionId) {
+                setCurrentSessionId(newSessionId);
+                // We delay refreshing the list slightly to let the title save
+                setTimeout(fetchSessions, 1000);
             }
+
+            // 4. Read the Stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let botReply = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                botReply += chunk;
+
+                // Update the LAST message (the placeholder we added)
+                setMessages(prev => {
+                    const newMsgs = [...prev];
+                    const lastMsgIndex = newMsgs.length - 1;
+                    // Create a new object to trigger re-render
+                    newMsgs[lastMsgIndex] = { 
+                        ...newMsgs[lastMsgIndex], 
+                        content: botReply 
+                    };
+                    return newMsgs;
+                });
+            }
+
         } catch (err) {
-            setMessages(prev => [...prev, { role: 'assistant', content: "Error connecting to Portify." }]);
+            if (err.name !== 'AbortError') {
+                console.error("Streaming Error:", err);
+                setMessages(prev => [...prev, { role: 'assistant', content: "\n[Error: Portify connection lost.]" }]);
+            }
         } finally {
             setLoading(false);
+            abortControllerRef.current = null;
         }
     };
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages]); // Auto-scroll as text streams in
 
     return (
         <Flex h="90vh" className="container" p={0} overflow="hidden" flexDirection={{base: 'column', md: 'row'}}>
@@ -149,6 +207,7 @@ function Portify() {
                     <HStack>
                         <BackButton />
                         <Text fontWeight="bold">Portify AI Analysis</Text>
+                        {loading && <Spinner size="xs" color="blue.400" ml={2} />}
                     </HStack>
                 </Box>
 
@@ -176,7 +235,6 @@ function Portify() {
                             </ReactMarkdown>
                         </Box>
                     ))}
-                    {loading && <Spinner />}
                     <div ref={endRef} />
                 </VStack>
 
@@ -190,7 +248,7 @@ function Portify() {
                             placeholder="Ask about a stock..." 
                             bg="var(--bg-dark-primary)"
                         />
-                        <IconButton icon={<ChatIcon />} colorScheme="blue" onClick={handleSend} />
+                        <IconButton icon={<ChatIcon />} colorScheme="blue" onClick={handleSend} isLoading={loading} />
                     </HStack>
                 </Box>
             </Flex>
