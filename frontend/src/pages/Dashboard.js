@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue, getTransactions, getDiversificationScore, getWatchlist } from '../api/portfolio';
 import { searchStocks, getMarketSummary, getTopMovers } from '../api/stocks';
 import { formatCurrency } from '../utils/format';
-import { Pie, Line, Doughnut } from 'react-chartjs-2';
+import { Doughnut, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler } from 'chart.js';
 import NewsTicker from '../components/NewsTicker';
 import Joyride, { STATUS } from 'react-joyride';
@@ -15,7 +15,7 @@ import {
   Input, List, ListItem, Spinner, Skeleton, Button, IconButton, Badge,
   Table, Thead, Tbody, Tr, Th, Td, HStack, keyframes
 } from '@chakra-ui/react';
-import { SearchIcon, AddIcon, ArrowForwardIcon, TriangleUpIcon, TriangleDownIcon } from '@chakra-ui/icons';
+import { SearchIcon, AddIcon, ArrowForwardIcon } from '@chakra-ui/icons';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, Filler);
 
@@ -44,7 +44,7 @@ const chartOptions = {
   }
 };
 
-// --- ANIMATION KEYFRAMES (Seamless Infinite Scroll) ---
+// --- ANIMATION KEYFRAMES ---
 const marquee = keyframes`
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
@@ -56,7 +56,6 @@ const TickerTape = () => {
     const [indices, setIndices] = useState([]);
     
     useEffect(() => {
-        // Fetch market summary on mount
         getMarketSummary().then(data => setIndices(data || []));
     }, []);
 
@@ -67,13 +66,11 @@ const TickerTape = () => {
             <Box 
                 as="div" 
                 display="inline-block" 
-                // Duplicating list + moving -50% creates perfect loop
                 animation={`${marquee} 60s linear infinite`}
                 minW="100%"
-                _hover={{ animationPlayState: 'paused' }} // Pause on hover for readability
+                _hover={{ animationPlayState: 'paused' }}
             >
                 <HStack spacing={12} display="inline-flex" pr={12}>
-                    {/* Render List TWICE for infinite loop */}
                     {[...indices, ...indices].map((idx, i) => (
                         <HStack key={`${idx.symbol}-${i}`} spacing={3}>
                             <Text fontWeight="bold" fontSize="xs" color="gray.400" textTransform="uppercase">{idx.name}</Text>
@@ -155,6 +152,8 @@ function Dashboard() {
     const [diversificationScore, setDiversificationScore] = useState(null);
     const [movers, setMovers] = useState({ gainers: [], losers: [] });
     const [isInitialLoading, setIsInitialLoading] = useState(true);
+    // --- FIX 1: Add fallback prices for Mutual Funds ---
+    const [fallbackPrices, setFallbackPrices] = useState({}); 
     
     const [symbol, setSymbol] = useState('');
     const [suggestions, setSuggestions] = useState([]);
@@ -162,10 +161,9 @@ function Dashboard() {
     const [runTour, setRunTour] = useState(false);
 
     const tourSteps = [
-        { target: '#hero-stat', content: 'Your total simulated Net Worth and cash balance.' },
-        { target: '#market-movers', content: 'Check the top gainers and losers of the day.' },
-        { target: '#quick-actions', content: 'Search for stocks and execute trades instantly.' },
-        { target: '#holdings-table', content: 'View and manage your current stock positions.' },
+        { target: '#hero-stat', content: 'Your total simulated Net Worth.' },
+        { target: '#market-movers', content: 'Check top gainers and losers.' },
+        { target: '#holdings-table', content: 'Your current stock and mutual fund positions.' },
     ];
 
     useEffect(() => {
@@ -184,7 +182,6 @@ function Dashboard() {
         if (!user?.id) return;
         setIsInitialLoading(true);
         try {
-            // Fetch all data in parallel
             const [portfolioRes, liveValueRes, transactionsRes, diversificationRes, watchlistRes, moversRes] = await Promise.all([
                 getPortfolio(user.id), 
                 getPortfolioLiveValue(user.id),
@@ -194,9 +191,21 @@ function Dashboard() {
                 getTopMovers()
             ]);
 
-            // 1. Process Portfolio for Table & Allocation Chart
+            // 1. Extract Mutual Fund Prices from Backend Calculation
+            if (liveValueRes?.investment_details && portfolioRes?.investments) {
+                const calculatedPrices = {};
+                portfolioRes.investments.forEach(inv => {
+                    const details = liveValueRes.investment_details[inv.id];
+                    // If backend gives a value, calculate unit price (Value / Quantity)
+                    if (details && details.live_value_inr && inv.quantity > 0) {
+                        calculatedPrices[inv.symbol] = details.live_value_inr / inv.quantity;
+                    }
+                });
+                setFallbackPrices(calculatedPrices);
+            }
+
+            // 2. Process Portfolio
             if (portfolioRes?.investments) {
-                 // Group by symbol (consolidate multiple buys)
                  const holdingsMap = {};
                  portfolioRes.investments.forEach(inv => {
                     if (!holdingsMap[inv.symbol]) {
@@ -215,7 +224,6 @@ function Dashboard() {
 
                  setPortfolio(consolidated);
 
-                 // Allocation Chart Data
                  const labels = consolidated.map(inv => inv.symbol);
                  const data = consolidated.map(inv => inv.total_cost); 
                  setChartData({ 
@@ -228,7 +236,7 @@ function Dashboard() {
                  });
             }
 
-            // 2. History Chart
+            // 3. History
             const historyData = liveValueRes.history || [];
             if (historyData.length > 0) {
                 setHistoryChartData({
@@ -261,7 +269,6 @@ function Dashboard() {
 
     useEffect(() => { fetchDashboardData(); }, [fetchDashboardData]);
 
-    // Stock Search Logic
     useEffect(() => {
         if (symbol.trim() === '') { setSuggestions([]); return; }
         const timer = setTimeout(async () => {
@@ -292,7 +299,7 @@ function Dashboard() {
 
     return (
         <Box>
-            <TickerTape /> {/* Ticker Tape at Top */}
+            <TickerTape /> 
             <Container maxW="100%" px={[4, 6, 8]} py={8}>
                 <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showSkipButton 
                     styles={{ options: { primaryColor: '#0ea5e9', backgroundColor: '#1e293b', textColor: '#fff', arrowColor: '#1e293b' } }} 
@@ -308,10 +315,8 @@ function Dashboard() {
                     </Button>
                 </Flex>
 
-                {/* --- BENTO GRID LAYOUT --- */}
                 <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={6}>
                     
-                    {/* 1. NET WORTH */}
                     <BentoCard colSpan={{ base: 1, md: 2 }} title="Total Net Worth" id="hero-stat">
                         <Flex align="center" justify="space-between" h="100%">
                             <Box>
@@ -329,7 +334,6 @@ function Dashboard() {
                         </Flex>
                     </BentoCard>
 
-                    {/* 2. MARKET MOVERS */}
                     <BentoCard title="Market Movers (Today)" colSpan={1} id="market-movers">
                         {movers.gainers.length > 0 ? (
                             <>
@@ -339,31 +343,19 @@ function Dashboard() {
                         ) : <Spinner size="sm" />}
                     </BentoCard>
 
-                    {/* 3. QUICK ACTIONS */}
                     <BentoCard title="Quick Trade" colSpan={1} id="quick-actions">
                         <Box position="relative">
                             <Input 
-                                id="stock-search"
-                                placeholder="Search Ticker (e.g. AAPL)" 
-                                bg="blackAlpha.400" 
-                                border="none" 
-                                _focus={{ bg: 'blackAlpha.500', ring: 1, ringColor: 'brand.500' }}
-                                value={symbol}
-                                onChange={(e) => setSymbol(e.target.value)}
+                                id="stock-search" placeholder="Search Ticker (e.g. AAPL)" 
+                                bg="blackAlpha.400" border="none" _focus={{ bg: 'blackAlpha.500', ring: 1, ringColor: 'brand.500' }}
+                                value={symbol} onChange={(e) => setSymbol(e.target.value)}
                             />
-                            <IconButton 
-                                position="absolute" right={1} top={1} size="sm" 
-                                icon={<SearchIcon />} variant="ghost"
-                                isLoading={isSearching}
-                            />
+                            <IconButton position="absolute" right={1} top={1} size="sm" icon={<SearchIcon />} variant="ghost" isLoading={isSearching} />
                             {suggestions.length > 0 && (
                                 <List position="absolute" w="100%" mt={2} bg="bg.800" borderRadius="md" boxShadow="xl" zIndex={10} border="1px solid" borderColor="whiteAlpha.200">
                                     {suggestions.map(s => (
                                         <ListItem key={s.symbol} p={3} _hover={{ bg: 'whiteAlpha.100' }} cursor="pointer" onClick={() => navigate(`/stock/${s.symbol}`)}>
-                                            <Flex justify="space-between">
-                                                <Text fontWeight="bold">{s.symbol}</Text>
-                                                <Text fontSize="sm" color="gray.400">{s.name}</Text>
-                                            </Flex>
+                                            <Flex justify="space-between"><Text fontWeight="bold">{s.symbol}</Text><Text fontSize="sm" color="gray.400">{s.name}</Text></Flex>
                                         </ListItem>
                                     ))}
                                 </List>
@@ -376,17 +368,14 @@ function Dashboard() {
                         </Flex>
                     </BentoCard>
 
-                    {/* 4. HISTORY CHART */}
                     <BentoCard title="Performance History" colSpan={{ base: 1, md: 3 }} rowSpan={2} minH="300px" id="chart-section">
                          {historyChartData ? <Line data={historyChartData} options={chartOptions} /> : <Flex justify="center" align="center" h="100%"><Text color="gray.500">No history data available</Text></Flex>}
                     </BentoCard>
 
-                    {/* 5. ASSET ALLOCATION */}
                     <BentoCard title="Allocation" colSpan={1} rowSpan={1}>
                         <AllocationChart data={chartData} />
                     </BentoCard>
 
-                    {/* 6. WATCHLIST */}
                     <BentoCard title="Watchlist" colSpan={1} rowSpan={2}>
                         {watchlist.length === 0 ? <Text color="gray.500" fontSize="sm">No favorites yet.</Text> : (
                             <List spacing={3}>
@@ -411,7 +400,7 @@ function Dashboard() {
                         <Button mt={4} w="full" size="xs" variant="ghost" rightIcon={<ArrowForwardIcon />}>View All</Button>
                     </BentoCard>
                     
-                    {/* 7. HOLDINGS TABLE */}
+                    {/* --- FIX 2: Use Fallback Prices in Table --- */}
                     <BentoCard title="Your Holdings" colSpan={{ base: 1, md: 3 }} id="holdings-table">
                         {portfolio.length === 0 ? (
                             <Text color="gray.500" fontSize="sm">You don't have any investments yet.</Text>
@@ -429,7 +418,9 @@ function Dashboard() {
                                 </Thead>
                                 <Tbody>
                                     {portfolio.map((inv) => {
-                                        const currentPrice = livePrices[inv.symbol] || inv.buy_price; // Fallback
+                                        // Check WebSocket First -> Then Fallback (Mutual Funds) -> Then Buy Price
+                                        const currentPrice = livePrices[inv.symbol] || fallbackPrices[inv.symbol] || inv.buy_price;
+                                        
                                         const pnl = ((currentPrice - inv.avg_price) / inv.avg_price) * 100;
                                         const isProfitable = pnl >= 0;
                                         const currency = inv.symbol.includes('.NS') ? 'INR' : 'USD';
@@ -439,7 +430,11 @@ function Dashboard() {
                                                 <Td fontWeight="bold">{inv.symbol}</Td>
                                                 <Td isNumeric className="mono-font">{inv.quantity.toFixed(2)}</Td>
                                                 <Td isNumeric className="mono-font">{formatCurrency(inv.avg_price, currency)}</Td>
-                                                <Td isNumeric className="mono-font">{livePrices[inv.symbol] ? formatCurrency(livePrices[inv.symbol], currency) : <Spinner size="xs"/>}</Td>
+                                                <Td isNumeric className="mono-font">
+                                                    {(livePrices[inv.symbol] || fallbackPrices[inv.symbol]) 
+                                                        ? formatCurrency(currentPrice, currency) 
+                                                        : <Spinner size="xs"/>}
+                                                </Td>
                                                 <Td isNumeric>
                                                     <Badge colorScheme={isProfitable ? 'green' : 'red'}>
                                                         {isProfitable ? '+' : ''}{pnl.toFixed(2)}%
@@ -454,7 +449,6 @@ function Dashboard() {
                         )}
                     </BentoCard>
 
-                    {/* 8. NEWS FEED */}
                     <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 1 }}>
                         <NewsTicker />
                     </BentoCard>
