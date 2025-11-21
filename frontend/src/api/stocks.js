@@ -34,6 +34,7 @@ export const getStockPrice = async (symbol) => {
 
 /**
  * Fetches historical candle data for charts.
+ * Now returns OHLC data for Candlestick charts.
  */
 export const getStockHistory = async (symbol, period = '1y') => {
   try {
@@ -87,5 +88,22 @@ export const getTopMovers = async () => {
     } catch (error) {
         console.error("Error fetching top movers:", error);
         return { gainers: [], losers: [] };
+    }
+};
+
+// --- NEW: BACKTESTING (Time Machine) ---
+
+/**
+ * Calculates past performance of a stock.
+ */
+export const runBacktest = async (symbol, years, amount) => {
+    try {
+        const response = await client.get("/stocks/backtest", {
+            params: { symbol, years, amount }
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Backtest error:", error);
+        throw error.response?.data || error;
     }
 };

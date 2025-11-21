@@ -53,7 +53,7 @@ function NewsTicker() {
     return (
         <VStack spacing={0} align="stretch" divider={<Box borderBottom="1px solid" borderColor="whiteAlpha.100" />}>
             {news.length > 0 ? (
-                news.slice(0, 6).map((item, index) => ( // Limit to 6 items to fit nicely
+                news.slice(0, 6).map((item, index) => (
                     <Box key={index} py={3} _first={{ pt: 0 }} _last={{ pb: 0, borderBottom: 'none' }}>
                         <Flex align="center" mb={1}>
                             <SentimentBadge sentiment={item.sentiment} />

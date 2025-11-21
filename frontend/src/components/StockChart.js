@@ -1,185 +1,116 @@
 // src/components/StockChart.js
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createChart, ColorType } from 'lightweight-charts';
 import { getStockHistory } from '../api/stocks';
-import { Line } from 'react-chartjs-2';
-import { parseISO, isValid as isValidDate } from 'date-fns';
+import { Box, Flex, Button, Spinner, Text } from '@chakra-ui/react';
 
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, Filler } from 'chart.js';
-import 'chartjs-adapter-date-fns'; 
+function StockChart({ symbol }) {
+    const chartContainerRef = useRef();
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [period, setPeriod] = useState('1y');
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale, Filler); 
+    useEffect(() => {
+        const container = chartContainerRef.current;
+        if (!container) return;
 
-// --- START: MODIFIED CODE (Accepts currency prop) ---
-function StockChart({ symbol, currency }) {
-// --- END: MODIFIED CODE ---
-  const [chartData, setChartData] = useState(null);
-  const [period, setPeriod] = useState('1y');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+        // 1. Initialize Chart
+        const chart = createChart(container, {
+            layout: {
+                background: { type: ColorType.Solid, color: 'transparent' },
+                textColor: '#94a3b8',
+            },
+            grid: {
+                vertLines: { color: 'rgba(40, 40, 40, 0)' }, // Hide vertical grid
+                horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+            },
+            width: container.clientWidth,
+            height: 400,
+            timeScale: {
+                borderColor: '#334155',
+                timeVisible: true,
+            },
+            rightPriceScale: {
+                borderColor: '#334155',
+            },
+        });
 
-  useEffect(() => {
-    let isMounted = true; 
+        // 2. Add Candlestick Series
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#10b981', // Emerald Green
+            downColor: '#f43f5e', // Rose Red
+            borderVisible: false,
+            wickUpColor: '#10b981',
+            wickDownColor: '#f43f5e',
+        });
 
-    const fetchHistory = async () => {
-      if (!isMounted) return; 
-      setLoading(true);
-      setError('');
-      setChartData(null); 
-      
-      try {
-        const history = await getStockHistory(symbol, period);
-        
-        if (!isMounted) return; 
-
-        if (!history || !Array.isArray(history) || history.length === 0) {
-          throw new Error(`No historical data found for ${symbol} for period ${period}.`);
-        }
-        
-        const dataPoints = history
-          .map(data => {
-            const date = parseISO(data.Date); 
-            const price = data.Close !== null ? Number(data.Close) : null;
-            if (!isValidDate(date) || price === null || isNaN(price)) {
-              console.warn("Skipping invalid data point:", data);
-              return null; 
+        // 3. Fetch Data
+        const fetchData = async () => {
+            setLoading(true);
+            setError('');
+            try {
+                const data = await getStockHistory(symbol, period);
+                // Lightweight charts expects: { time: '2023-01-01', open: ..., high: ..., low: ..., close: ... }
+                // Our updated API provides exactly this.
+                candlestickSeries.setData(data);
+                chart.timeScale().fitContent();
+            } catch (err) {
+                setError('Failed to load chart data.');
+            } finally {
+                setLoading(false);
             }
-            return { x: date, y: price };
-          })
-          .filter(point => point !== null) 
-          .sort((a, b) => a.x - b.x); 
+        };
 
-         if (dataPoints.length === 0) {
-           throw new Error("Valid chart data could not be processed.");
-         }
-        
-        if (isMounted) { 
-          setChartData({
-            datasets: [{
-                label: `${symbol} Price`,
-                data: dataPoints,
-                borderColor: 'var(--brand-primary)',
-                backgroundColor: 'rgba(66, 153, 225, 0.2)',
-                fill: true,
-                tension: 0.1,
-                pointRadius: 0, 
-            }],
-          });
-        }
-      } catch (err) {
-         console.error("Chart loading error:", err); 
-         if (isMounted) {
-            setError(err.message || "Failed to load chart data.");
-         }
-      } finally {
-         if (isMounted) {
-            setLoading(false);
-         }
-      }
-    };
+        fetchData();
 
-    fetchHistory();
+        // 4. Handle Resize
+        const handleResize = () => {
+            chart.applyOptions({ width: container.clientWidth });
+        };
+        window.addEventListener('resize', handleResize);
 
-    return () => {
-      isMounted = false; 
-    };
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            chart.remove();
+        };
+    }, [symbol, period]);
 
-  }, [symbol, period]); 
+    const periods = ['1mo', '3mo', '6mo', '1y', '2y', '5y'];
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      x: {
-        type: 'time',
-        time: {
-          unit: 'month',
-          tooltipFormat: 'MMM dd, yyyy',
-        },
-        ticks: { color: 'var(--text-secondary)', maxRotation: 0, autoSkip: true, maxTicksLimit: 7 },
-        grid: { color: 'rgba(74, 85, 104, 0.4)' }
-      },
-      y: {
-        ticks: {
-          color: 'var(--text-secondary)',
-          // --- START: MODIFIED CODE (Uses currency prop for formatting) ---
-          callback: function(value) {
-            const locale = currency === 'INR' ? 'en-IN' : 'en-US';
-            return new Intl.NumberFormat(locale, {
-                style: 'currency',
-                currency: currency,
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-            }).format(value);
-          }
-          // --- END: MODIFIED CODE ---
-        },
-        grid: { color: 'rgba(74, 85, 104, 0.4)' }
-      }
-    },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-        callbacks: {
-            // --- START: MODIFIED CODE (Uses currency prop for formatting) ---
-            label: function(context) {
-                let label = context.dataset.label || '';
-                if (label) { label += ': '; }
-                if (context.parsed.y !== null) {
-                    const locale = currency === 'INR' ? 'en-IN' : 'en-US';
-                    label += new Intl.NumberFormat(locale, {
-                        style: 'currency',
-                        currency: currency,
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                    }).format(context.parsed.y);
-                }
-                return label;
-            }
-            // --- END: MODIFIED CODE ---
-        }
-      }
-    },
-    interaction: {
-        mode: 'index',
-        intersect: false,
-    },
-  };
-  
-  const periodButtons = ['1mo', '3mo', '6mo', '1y', '5y', 'max'];
-
-  return (
-    <div style={{ marginTop: '2rem', height: '400px' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {periodButtons.map(p => (
-           <button 
-             key={p} 
-             onClick={() => setPeriod(p)}
-             style={{
-               padding: '0.5rem 1rem',
-               fontSize: '0.8rem',
-               backgroundColor: period === p ? 'var(--brand-primary)' : 'var(--bg-dark-primary)', 
-               border: '1px solid var(--border-color)',
-               color: period === p ? 'white' : 'var(--text-secondary)',
-               cursor: 'pointer'
-             }}
-           >
-             {p.toUpperCase()}
-           </button>
-        ))}
-      </div>
-
-      <div style={{ position: 'relative', height: 'calc(100% - 40px)' }}>
-        {loading && <p>Loading chart for {period}...</p>}
-        {error && <p style={{ color: 'var(--danger)' }}>Error: {error}</p>}
-        {chartData && !loading && !error && (
-            <Line options={chartOptions} data={chartData} />
-        )}
-      </div>
-    </div>
-  );
+    return (
+        <Box className="glass-panel" p={4} mt={6} borderRadius="xl" bg="var(--bg-dark-secondary)">
+            <Flex justify="space-between" align="center" mb={4}>
+                <Text fontWeight="bold" color="gray.400" fontSize="sm">PRICE ACTION (CANDLESTICK)</Text>
+                <Flex gap={2} wrap="wrap">
+                    {periods.map(p => (
+                        <Button 
+                            key={p} 
+                            size="xs" 
+                            variant={period === p ? "solid" : "ghost"}
+                            colorScheme={period === p ? "blue" : "gray"}
+                            onClick={() => setPeriod(p)}
+                        >
+                            {p.toUpperCase()}
+                        </Button>
+                    ))}
+                </Flex>
+            </Flex>
+            
+            <Box position="relative" h="400px" w="100%">
+                {loading && (
+                    <Flex justify="center" align="center" h="100%" position="absolute" w="100%" zIndex={10} bg="blackAlpha.600">
+                        <Spinner color="blue.400" />
+                    </Flex>
+                )}
+                {error && (
+                    <Flex justify="center" align="center" h="100%" position="absolute" w="100%">
+                        <Text color="red.400">{error}</Text>
+                    </Flex>
+                )}
+                <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
+            </Box>
+        </Box>
+    );
 }
 
 export default StockChart;

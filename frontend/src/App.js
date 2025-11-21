@@ -28,13 +28,15 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import RiskProfile from './pages/RiskProfile';
 import TaxOptimizer from './pages/TaxOptimizer';
 import SIPCalculator from './pages/SIPCalculator';
-import Portify from './pages/Portify'; // --- NEW PAGE IMPORT
+import Portify from './pages/Portify';
 
 // Component Imports
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
-import ChatBot from './components/ChatBot'; // --- NEW COMPONENT IMPORT
+import ChatBot from './components/ChatBot';
+import Sidebar from './components/Sidebar'; 
+import CommandPalette from './components/CommandPalette'; // --- NEW IMPORT
 
 function App() {
   return (
@@ -57,12 +59,14 @@ function App() {
 function AppContent() {
   return (
     <Box display="flex" flexDirection="column" minHeight="100vh" bg="var(--dynamic-gradient)">
-      <ToastContainer
-        position="bottom-right"
-        autoClose={5000}
-        theme="dark" 
-      />
+      <ToastContainer position="bottom-right" autoClose={5000} theme="dark" />
+      
+      {/* GLOBAL COMMAND PALETTE (Cmd+K) */}
+      <CommandPalette /> 
+      
       <Header />
+      <Sidebar /> {/* Glossary Sidebar */}
+
       <Box as="main" flex="1" py={8} > 
         <Routes>
           {/* Public Routes */}
@@ -85,8 +89,10 @@ function AppContent() {
             <Route path="/risk-profile" element={<RiskProfile />} />
             <Route path="/tax-optimizer" element={<TaxOptimizer />} />
             <Route path="/sip-calculator" element={<SIPCalculator />} />
-            <Route path="/portify" element={<Portify />} /> {/* --- NEW ROUTE */}
+            <Route path="/portify" element={<Portify />} />
           </Route>
+          
+          {/* Fallback */}
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Box>

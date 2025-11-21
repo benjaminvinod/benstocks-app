@@ -44,10 +44,10 @@ const chartOptions = {
   }
 };
 
-// --- ANIMATION KEYFRAMES ---
+// --- ANIMATION KEYFRAMES (Seamless Infinite Scroll) ---
 const marquee = keyframes`
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 `;
 
 // --- COMPONENTS ---
@@ -67,11 +67,14 @@ const TickerTape = () => {
             <Box 
                 as="div" 
                 display="inline-block" 
-                animation={`${marquee} 25s linear infinite`}
+                // Duplicating list + moving -50% creates perfect loop
+                animation={`${marquee} 60s linear infinite`}
                 minW="100%"
+                _hover={{ animationPlayState: 'paused' }} // Pause on hover for readability
             >
-                <HStack spacing={12} display="inline-flex">
-                    {indices.concat(indices).map((idx, i) => (
+                <HStack spacing={12} display="inline-flex" pr={12}>
+                    {/* Render List TWICE for infinite loop */}
+                    {[...indices, ...indices].map((idx, i) => (
                         <HStack key={`${idx.symbol}-${i}`} spacing={3}>
                             <Text fontWeight="bold" fontSize="xs" color="gray.400" textTransform="uppercase">{idx.name}</Text>
                             <Text fontWeight="bold" fontSize="sm" color="white">
@@ -289,7 +292,7 @@ function Dashboard() {
 
     return (
         <Box>
-            <TickerTape /> {/* NEW: Ticker Tape at Top */}
+            <TickerTape /> {/* Ticker Tape at Top */}
             <Container maxW="100%" px={[4, 6, 8]} py={8}>
                 <Joyride steps={tourSteps} run={runTour} callback={handleJoyrideCallback} continuous showSkipButton 
                     styles={{ options: { primaryColor: '#0ea5e9', backgroundColor: '#1e293b', textColor: '#fff', arrowColor: '#1e293b' } }} 
@@ -326,7 +329,7 @@ function Dashboard() {
                         </Flex>
                     </BentoCard>
 
-                    {/* 2. MARKET MOVERS (NEW TILE) */}
+                    {/* 2. MARKET MOVERS */}
                     <BentoCard title="Market Movers (Today)" colSpan={1} id="market-movers">
                         {movers.gainers.length > 0 ? (
                             <>
@@ -336,7 +339,7 @@ function Dashboard() {
                         ) : <Spinner size="sm" />}
                     </BentoCard>
 
-                    {/* 3. QUICK ACTIONS (Search) */}
+                    {/* 3. QUICK ACTIONS */}
                     <BentoCard title="Quick Trade" colSpan={1} id="quick-actions">
                         <Box position="relative">
                             <Input 
@@ -451,7 +454,7 @@ function Dashboard() {
                         )}
                     </BentoCard>
 
-                    {/* 8. MARKET SENTIMENT (News) */}
+                    {/* 8. NEWS FEED */}
                     <BentoCard title="Market Sentiment" colSpan={{ base: 1, md: 1 }}>
                         <NewsTicker />
                     </BentoCard>

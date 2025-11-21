@@ -31,3 +31,4 @@ ollama
 
 react-markdown
 remark-gfm
+lightweight-charts
