@@ -8,7 +8,7 @@ import BackButton from '../components/BackButton';
 import { Link } from 'react-router-dom';
 import { 
     Box, Heading, Text, SimpleGrid, Stat, StatLabel, StatNumber, 
-    StatHelpText, Stack, Badge, Progress, useToast
+    StatHelpText, Stack, Badge, Progress, useToast, Skeleton, Spinner, Flex
 } from '@chakra-ui/react';
 import { CheckCircleIcon } from '@chakra-ui/icons';
 
@@ -32,6 +32,7 @@ function TaxOptimizer() {
 
     const fetchData = useCallback(async () => {
         if (!user?.id) return;
+        // Ensure loading is true before starting fetch
         setLoading(true);
         try {
             const [portfolioRes, liveValueRes] = await Promise.all([
@@ -111,87 +112,105 @@ function TaxOptimizer() {
                 <Text color="gray.400">Analyze liabilities and automate tax harvesting strategies.</Text>
             </Box>
 
-            {/* --- STATS DASHBOARD --- */}
-            <SimpleGrid columns={{ base: 1, md: 4 }} spacing={5} mb={8}>
-                <Stat className="glass-panel" p={4}>
-                    <StatLabel color="gray.400">Unrealized Gains</StatLabel>
-                    <StatNumber color={metrics.totalGain >= 0 ? "green.400" : "red.400"}>
-                        {formatCurrency(metrics.totalGain, 'INR')}
-                    </StatNumber>
-                    <StatHelpText>Total Portfolio Performance</StatHelpText>
-                </Stat>
-                <Stat className="glass-panel" p={4}>
-                    <StatLabel color="gray.400">Est. Tax Bill</StatLabel>
-                    <StatNumber color="red.300">
-                        {formatCurrency(metrics.estTax, 'INR')}
-                    </StatNumber>
-                    <StatHelpText>If sold today</StatHelpText>
-                </Stat>
-                <Stat className="glass-panel" p={4}>
-                    <StatLabel color="gray.400">Harvestable Loss</StatLabel>
-                    <StatNumber color="orange.300">
-                        {formatCurrency(metrics.harvestableLoss, 'INR')}
-                    </StatNumber>
-                    <StatHelpText>Available to offset gains</StatHelpText>
-                </Stat>
-                <Stat className="glass-panel" p={4}>
-                    <StatLabel color="gray.400">Tax Breakdown</StatLabel>
-                    <Box fontSize="sm" mt={1}>
-                        <Text>STCG (15%): <span style={{color:'#f56565'}}>{formatCurrency(metrics.stcgLiability, 'INR')}</span></Text>
-                        <Text>LTCG (10%): <span style={{color:'#ed8936'}}>{formatCurrency(metrics.ltcgLiability, 'INR')}</span></Text>
-                    </Box>
-                </Stat>
-            </SimpleGrid>
+            {/* --- LOADING SKELETON --- */}
+            {loading ? (
+                <>
+                    <SimpleGrid columns={{ base: 1, md: 4 }} spacing={5} mb={8}>
+                        <Skeleton height="120px" borderRadius="xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                        <Skeleton height="120px" borderRadius="xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                        <Skeleton height="120px" borderRadius="xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                        <Skeleton height="120px" borderRadius="xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                    </SimpleGrid>
+                    <SimpleGrid columns={{base:1, md: 2}} spacing={6}>
+                        <Skeleton height="200px" borderRadius="xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                        <Skeleton height="200px" borderRadius="xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                    </SimpleGrid>
+                </>
+            ) : (
+                <>
+                    {/* --- STATS DASHBOARD (Only shown after loading) --- */}
+                    <SimpleGrid columns={{ base: 1, md: 4 }} spacing={5} mb={8}>
+                        <Stat className="glass-panel" p={4}>
+                            <StatLabel color="gray.400">Unrealized Gains</StatLabel>
+                            <StatNumber color={metrics.totalGain >= 0 ? "green.400" : "red.400"}>
+                                {formatCurrency(metrics.totalGain, 'INR')}
+                            </StatNumber>
+                            <StatHelpText>Total Portfolio Performance</StatHelpText>
+                        </Stat>
+                        <Stat className="glass-panel" p={4}>
+                            <StatLabel color="gray.400">Est. Tax Bill</StatLabel>
+                            <StatNumber color="red.300">
+                                {formatCurrency(metrics.estTax, 'INR')}
+                            </StatNumber>
+                            <StatHelpText>If sold today</StatHelpText>
+                        </Stat>
+                        <Stat className="glass-panel" p={4}>
+                            <StatLabel color="gray.400">Harvestable Loss</StatLabel>
+                            <StatNumber color="orange.300">
+                                {formatCurrency(metrics.harvestableLoss, 'INR')}
+                            </StatNumber>
+                            <StatHelpText>Available to offset gains</StatHelpText>
+                        </Stat>
+                        <Stat className="glass-panel" p={4}>
+                            <StatLabel color="gray.400">Tax Breakdown</StatLabel>
+                            <Box fontSize="sm" mt={1}>
+                                <Text>STCG (15%): <span style={{color:'#f56565'}}>{formatCurrency(metrics.stcgLiability, 'INR')}</span></Text>
+                                <Text>LTCG (10%): <span style={{color:'#ed8936'}}>{formatCurrency(metrics.ltcgLiability, 'INR')}</span></Text>
+                            </Box>
+                        </Stat>
+                    </SimpleGrid>
 
-            {/* --- ANALYSIS CARDS (Moved out of Tabs) --- */}
-            <SimpleGrid columns={{base:1, md: 2}} spacing={6}>
-                {/* Loss Harvesting Card */}
-                <Box className="glass-panel" p={5}>
-                    <Heading size="md" mb={4} color="red.300">📉 Loss Harvesting</Heading>
-                    <Text fontSize="sm" color="gray.400" mb={4}>
-                        Selling these assets now creates a "Loss" that cancels out your taxable profits, lowering your bill.
-                    </Text>
-                    {lossHarvesting.length === 0 ? (
-                        <Text color="green.400"><CheckCircleIcon mr={2}/> No major losses to harvest!</Text>
-                    ) : (
-                        <Stack spacing={3}>
-                            {lossHarvesting.map(inv => (
-                                <Box key={inv.id} p={3} bg="whiteAlpha.100" borderRadius="md">
-                                    <div style={{display:'flex', justifyContent:'space-between'}}>
-                                        <Text fontWeight="bold">{inv.symbol}</Text>
-                                        <Text color="red.400" fontWeight="bold">{formatCurrency(inv.gainLoss, 'INR')}</Text>
-                                    </div>
-                                    <Text fontSize="xs" color="gray.500">Qty: {inv.quantity.toFixed(2)}</Text>
-                                </Box>
-                            ))}
-                        </Stack>
-                    )}
-                </Box>
+                    {/* --- ANALYSIS CARDS --- */}
+                    <SimpleGrid columns={{base:1, md: 2}} spacing={6}>
+                        {/* Loss Harvesting Card */}
+                        <Box className="glass-panel" p={5}>
+                            <Heading size="md" mb={4} color="red.300">📉 Loss Harvesting</Heading>
+                            <Text fontSize="sm" color="gray.400" mb={4}>
+                                Selling these assets now creates a "Loss" that cancels out your taxable profits, lowering your bill.
+                            </Text>
+                            {lossHarvesting.length === 0 ? (
+                                <Text color="green.400"><CheckCircleIcon mr={2}/> No major losses to harvest!</Text>
+                            ) : (
+                                <Stack spacing={3}>
+                                    {lossHarvesting.map(inv => (
+                                        <Box key={inv.id} p={3} bg="whiteAlpha.100" borderRadius="md">
+                                            <div style={{display:'flex', justifyContent:'space-between'}}>
+                                                <Text fontWeight="bold">{inv.symbol}</Text>
+                                                <Text color="red.400" fontWeight="bold">{formatCurrency(inv.gainLoss, 'INR')}</Text>
+                                            </div>
+                                            <Text fontSize="xs" color="gray.500">Qty: {inv.quantity.toFixed(2)}</Text>
+                                        </Box>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Box>
 
-                {/* LTCG Card */}
-                <Box className="glass-panel" p={5}>
-                    <Heading size="md" mb={4} color="blue.300">⏳ LTCG Countdown</Heading>
-                    <Text fontSize="sm" color="gray.400" mb={4}>
-                        Assets nearing 1 year (Long Term). Wait a few days to drop tax from 15% to 10%.
-                    </Text>
-                    {ltcgOpportunities.length === 0 ? (
-                        <Text color="gray.500">No assets approaching LTCG status soon.</Text>
-                    ) : (
-                        <Stack spacing={3}>
-                            {ltcgOpportunities.map(inv => (
-                                <Box key={inv.id} p={3} bg="whiteAlpha.100" borderRadius="md">
-                                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
-                                        <Text fontWeight="bold">{inv.symbol}</Text>
-                                        <Badge colorScheme="blue">{inv.daysToLTCG} Days left</Badge>
-                                    </div>
-                                    <Progress value={100 - (inv.daysToLTCG/365*100)} size="xs" colorScheme="blue" borderRadius="full" />
-                                    <Text fontSize="xs" color="gray.400" mt={1}>Potential Tax Save: {formatCurrency(inv.gainLoss * 0.05, 'INR')}</Text>
-                                </Box>
-                            ))}
-                        </Stack>
-                    )}
-                </Box>
-            </SimpleGrid>
+                        {/* LTCG Card */}
+                        <Box className="glass-panel" p={5}>
+                            <Heading size="md" mb={4} color="blue.300">⏳ LTCG Countdown</Heading>
+                            <Text fontSize="sm" color="gray.400" mb={4}>
+                                Assets nearing 1 year (Long Term). Wait a few days to drop tax from 15% to 10%.
+                            </Text>
+                            {ltcgOpportunities.length === 0 ? (
+                                <Text color="gray.500">No assets approaching LTCG status soon.</Text>
+                            ) : (
+                                <Stack spacing={3}>
+                                    {ltcgOpportunities.map(inv => (
+                                        <Box key={inv.id} p={3} bg="whiteAlpha.100" borderRadius="md">
+                                            <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
+                                                <Text fontWeight="bold">{inv.symbol}</Text>
+                                                <Badge colorScheme="blue">{inv.daysToLTCG} Days left</Badge>
+                                            </div>
+                                            <Progress value={100 - (inv.daysToLTCG/365*100)} size="xs" colorScheme="blue" borderRadius="full" />
+                                            <Text fontSize="xs" color="gray.400" mt={1}>Potential Tax Save: {formatCurrency(inv.gainLoss * 0.05, 'INR')}</Text>
+                                        </Box>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Box>
+                    </SimpleGrid>
+                </>
+            )}
         </div>
     );
 }

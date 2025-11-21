@@ -1,6 +1,6 @@
 // src/components/NewsTicker.js
 import React, { useState, useEffect } from 'react';
-import { Box, VStack, Text, Link, Badge, Spinner, Flex } from '@chakra-ui/react';
+import { Box, VStack, Text, Link, Badge, Flex, Skeleton, Stack } from '@chakra-ui/react';
 import { getFinancialNews } from '../api/newsApi';
 
 // Helper for Sentiment Badge using Chakra UI styling
@@ -42,8 +42,19 @@ function NewsTicker() {
         fetchNews();
     }, []);
 
+    // --- MODIFIED: LOADING STATE ---
+    // Replaced Spinner with a Skeleton Layout that mimics the news list
     if (loading) {
-        return <Flex justify="center" py={4}><Spinner size="sm" color="gray.500" /></Flex>;
+        return (
+            <Stack spacing={4}>
+                {[1, 2, 3].map((i) => (
+                    <Box key={i} py={2}>
+                        <Skeleton height="12px" width="60px" mb={2} startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                        <Skeleton height="16px" width="100%" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                    </Box>
+                ))}
+            </Stack>
+        );
     }
 
     if (error) {
