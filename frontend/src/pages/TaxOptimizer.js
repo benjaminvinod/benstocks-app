@@ -3,167 +3,314 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getPortfolio, getPortfolioLiveValue } from '../api/portfolio';
+import client from '../api/client';
 import { formatCurrency } from '../utils/format';
 import BackButton from '../components/BackButton';
 import { Link } from 'react-router-dom';
-import { Switch, FormControl, FormLabel, Box, Heading, Text, Divider } from '@chakra-ui/react';
-import { toast } from 'react-toastify';
+import { 
+    Box, Heading, Text, Divider, SimpleGrid, Stat, StatLabel, StatNumber, 
+    StatHelpText, Tabs, TabList, TabPanels, Tab, TabPanel, 
+    FormControl, FormLabel, Switch, Select, Button, RadioGroup, Radio, Stack,
+    Badge, Progress, useToast
+} from '@chakra-ui/react';
+import { EmailIcon, DownloadIcon, CheckCircleIcon } from '@chakra-ui/icons';
 
 const STCG_RATE = 0.15; 
 const LTCG_RATE = 0.10; 
 
 function TaxOptimizer() {
     const { user } = useAuth();
+    const toast = useToast();
+    
     const [portfolio, setPortfolio] = useState([]);
     const [liveValues, setLiveValues] = useState({});
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [emailAlerts, setEmailAlerts] = useState(false); // New State for Email Preference
+    const [metrics, setMetrics] = useState({
+        totalGain: 0,
+        estTax: 0,
+        stcgLiability: 0,
+        ltcgLiability: 0,
+        harvestableLoss: 0
+    });
+
+    // Email Settings State
+    const [emailSettings, setEmailSettings] = useState({
+        frequency: 'WEEKLY', // DAILY, WEEKLY, MONTHLY, MANUAL
+        format: 'TEXT',      // TEXT, PDF
+        enabled: false
+    });
+    const [sendingEmail, setSendingEmail] = useState(false);
 
     const fetchData = useCallback(async () => {
         if (!user?.id) return;
         setLoading(true);
-        setError('');
         try {
             const [portfolioRes, liveValueRes] = await Promise.all([
                 getPortfolio(user.id),
                 getPortfolioLiveValue(user.id),
             ]);
 
-            if (portfolioRes?.investments) {
-                setPortfolio(portfolioRes.investments);
-            } else {
-                setError('Could not load portfolio holdings.');
-            }
+            const investments = portfolioRes?.investments || [];
+            const liveDetails = liveValueRes?.investment_details || {};
 
-            if (liveValueRes?.investment_details) {
-                setLiveValues(liveValueRes.investment_details);
-            } else {
-                 setError('Could not load live market values.');
-            }
+            setPortfolio(investments);
+            setLiveValues(liveDetails);
+
+            // Calculate Real-Time Tax Metrics
+            let totalGain = 0;
+            let stcgTax = 0;
+            let ltcgTax = 0;
+            let potentialLoss = 0;
+
+            investments.forEach(inv => {
+                const currentVal = liveDetails[inv.id]?.live_value_inr || (inv.quantity * inv.buy_price);
+                const gain = currentVal - inv.buy_cost_inr;
+                totalGain += gain;
+
+                const buyDate = new Date(inv.buy_date);
+                const today = new Date();
+                const daysHeld = Math.floor((today - buyDate) / (1000 * 60 * 60 * 24));
+                const isLongTerm = daysHeld > 365;
+
+                if (gain > 0) {
+                    if (isLongTerm) ltcgTax += (gain * LTCG_RATE);
+                    else stcgTax += (gain * STCG_RATE);
+                } else {
+                    potentialLoss += Math.abs(gain);
+                }
+            });
+
+            setMetrics({
+                totalGain,
+                estTax: stcgTax + ltcgTax,
+                stcgLiability: stcgTax,
+                ltcgLiability: ltcgTax,
+                harvestableLoss: potentialLoss
+            });
 
         } catch (err) {
-            setError('An error occurred while fetching data.');
             console.error(err);
+            toast({ title: "Error loading data", status: "error", duration: 3000 });
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, toast]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    // Handle Email Toggle
-    const handleEmailToggle = () => {
-        const newState = !emailAlerts;
-        setEmailAlerts(newState);
-        // In a real app, we would send an API call here: axios.post('/user/settings', { emailAlerts: newState })
-        if (newState) {
-            toast.success("You will now receive weekly tax harvesting alerts.");
-        } else {
-            toast.info("Tax alerts turned off.");
+    // --- Handlers ---
+
+    const handleManualEmail = async () => {
+        setSendingEmail(true);
+        try {
+            // Call the new backend endpoint
+            await client.post(`/analytics/send-tax-report/${user.id}`, {
+                format: emailSettings.format,
+                frequency: 'MANUAL'
+            });
+            toast({ title: `Report Sent!`, description: `Check your inbox for the ${emailSettings.format} report.`, status: "success", duration: 5000 });
+        } catch (error) {
+            toast({ title: "Email Failed", description: "Could not send email. Check backend logs.", status: "error" });
+        }
+        setSendingEmail(false);
+    };
+
+    const handleFrequencyChange = (e) => {
+        const newFreq = e.target.value;
+        setEmailSettings({ ...emailSettings, frequency: newFreq });
+        
+        // Optional: If they select "MANUAL", you could trigger logic here, 
+        // but usually it's safer to wait for the button click.
+        if (newFreq === 'MANUAL') {
+            toast({ title: "Manual Mode Selected", description: "Use the 'Send Report Now' button to trigger emails.", status: "info", duration: 3000 });
         }
     };
 
     const processedHoldings = portfolio.map(inv => {
-        const liveValue = liveValues[inv.id]?.live_value_inr;
-        const gainLoss = liveValue ? liveValue - inv.buy_cost_inr : 0;
-        
+        const liveValue = liveValues[inv.id]?.live_value_inr || (inv.quantity * inv.buy_price);
+        const gainLoss = liveValue - inv.buy_cost_inr;
         const buyDate = new Date(inv.buy_date);
-        const today = new Date();
-        const holdingDays = Math.round((today - buyDate) / (1000 * 60 * 60 * 24));
+        const holdingDays = Math.floor((new Date() - buyDate) / (1000 * 60 * 60 * 24));
         const isLongTerm = holdingDays > 365;
         const daysToLTCG = 365 - holdingDays;
 
-        return {
-            ...inv,
-            liveValue,
-            gainLoss,
-            holdingDays,
-            isLongTerm,
-            daysToLTCG
-        };
+        return { ...inv, liveValue, gainLoss, holdingDays, isLongTerm, daysToLTCG };
     });
 
-    const lossHarvestingOpportunities = processedHoldings.filter(h => h.gainLoss < -1000); // Threshold for meaningful loss
-    const ltcgAlerts = processedHoldings.filter(h => h.gainLoss > 5000 && !h.isLongTerm && h.daysToLTCG <= 60);
-
-    const InfoCard = ({ title, content, children }) => (
-        <div style={{ background: 'var(--bg-dark-primary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem', border: '1px solid var(--border-color)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--brand-primary)' }}>{title}</h3>
-            <p style={{ color: 'var(--text-secondary)' }}>{content}</p>
-            {children}
-        </div>
-    );
+    const lossHarvesting = processedHoldings.filter(h => h.gainLoss < -500); 
+    const ltcgOpportunities = processedHoldings.filter(h => h.gainLoss > 0 && !h.isLongTerm && h.daysToLTCG <= 60);
 
     return (
         <div className="container">
             <BackButton />
-            <div className="page-header">
-                <h1>Tax Optimizer & Settings</h1>
-                <p>Analyze your portfolio for tax-saving opportunities.</p>
-            </div>
-
-            {/* New Email Settings Section */}
-            <Box bg="var(--bg-secondary-dynamic)" p={5} borderRadius="lg" mb={6}>
-                <Heading size="md" mb={2}>Notification Preferences</Heading>
-                <FormControl display="flex" alignItems="center">
-                    <FormLabel htmlFor="email-alerts" mb="0" flex="1" color="var(--text-primary)">
-                        Receive weekly email alerts for Tax Harvesting opportunities?
-                    </FormLabel>
-                    <Switch id="email-alerts" isChecked={emailAlerts} onChange={handleEmailToggle} colorScheme="green" />
-                </FormControl>
+            <Box className="page-header">
+                <Heading size="lg">Tax Optimizer Pro ⚖️</Heading>
+                <Text color="gray.400">Analyze liabilities and automate tax harvesting alerts.</Text>
             </Box>
 
-            <Divider mb={6} />
+            {/* --- STATS DASHBOARD --- */}
+            <SimpleGrid columns={{ base: 1, md: 4 }} spacing={5} mb={8}>
+                <Stat className="glass-panel" p={4}>
+                    <StatLabel color="gray.400">Unrealized Gains</StatLabel>
+                    <StatNumber color={metrics.totalGain >= 0 ? "green.400" : "red.400"}>
+                        {formatCurrency(metrics.totalGain, 'INR')}
+                    </StatNumber>
+                    <StatHelpText>Total Portfolio Performance</StatHelpText>
+                </Stat>
+                <Stat className="glass-panel" p={4}>
+                    <StatLabel color="gray.400">Est. Tax Bill</StatLabel>
+                    <StatNumber color="red.300">
+                        {formatCurrency(metrics.estTax, 'INR')}
+                    </StatNumber>
+                    <StatHelpText>If sold today</StatHelpText>
+                </Stat>
+                <Stat className="glass-panel" p={4}>
+                    <StatLabel color="gray.400">Harvestable Loss</StatLabel>
+                    <StatNumber color="orange.300">
+                        {formatCurrency(metrics.harvestableLoss, 'INR')}
+                    </StatNumber>
+                    <StatHelpText>Available to offset gains</StatHelpText>
+                </Stat>
+                <Stat className="glass-panel" p={4}>
+                    <StatLabel color="gray.400">Tax Breakdown</StatLabel>
+                    <Box fontSize="sm" mt={1}>
+                        <Text>STCG (15%): <span style={{color:'#f56565'}}>{formatCurrency(metrics.stcgLiability, 'INR')}</span></Text>
+                        <Text>LTCG (10%): <span style={{color:'#ed8936'}}>{formatCurrency(metrics.ltcgLiability, 'INR')}</span></Text>
+                    </Box>
+                </Stat>
+            </SimpleGrid>
 
-            {loading && <p>Analyzing your portfolio...</p>}
-            {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+            {/* --- MAIN CONTENT TABS --- */}
+            <Tabs variant="enclosed" colorScheme="blue">
+                <TabList mb={4}>
+                    <Tab fontWeight="bold">📊 Analysis & Opportunities</Tab>
+                    <Tab fontWeight="bold">🔔 Alerts & Reports</Tab>
+                </TabList>
 
-            {!loading && !error && (
-                <>
-                    <InfoCard
-                        title="💡 Tax Loss Harvesting Opportunities"
-                        content="Selling these investments now can help offset capital gains taxes from other profits. (Showing losses > ₹1,000)"
-                    >
-                        {lossHarvestingOpportunities.length > 0 ? (
-                            <ul style={{ listStyle: 'none', padding: 0 }}>
-                                {lossHarvestingOpportunities.map(inv => (
-                                    <li key={inv.id} style={{ background: 'var(--bg-dark-secondary)', padding: '1rem', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
-                                        <span><strong>{inv.symbol}</strong> ({Math.round(inv.quantity)} qty)</span>
-                                        <span style={{ color: 'var(--danger)', fontWeight: 'bold' }}>Loss: {formatCurrency(inv.gainLoss, 'INR')}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p>No significant tax-loss harvesting opportunities found.</p>
-                        )}
-                    </InfoCard>
+                <TabPanels>
+                    {/* PANEL 1: ANALYSIS */}
+                    <TabPanel p={0}>
+                        <SimpleGrid columns={{base:1, md: 2}} spacing={6}>
+                            {/* Loss Harvesting Card */}
+                            <Box className="glass-panel" p={5}>
+                                <Heading size="md" mb={4} color="red.300">📉 Loss Harvesting</Heading>
+                                <Text fontSize="sm" color="gray.400" mb={4}>
+                                    Selling these assets now creates a "Loss" that cancels out your taxable profits, lowering your bill.
+                                </Text>
+                                {lossHarvesting.length === 0 ? (
+                                    <Text color="green.400"><CheckCircleIcon mr={2}/> No major losses to harvest!</Text>
+                                ) : (
+                                    <Stack spacing={3}>
+                                        {lossHarvesting.map(inv => (
+                                            <Box key={inv.id} p={3} bg="whiteAlpha.100" borderRadius="md">
+                                                <div style={{display:'flex', justifyContent:'space-between'}}>
+                                                    <Text fontWeight="bold">{inv.symbol}</Text>
+                                                    <Text color="red.400" fontWeight="bold">{formatCurrency(inv.gainLoss, 'INR')}</Text>
+                                                </div>
+                                                <Text fontSize="xs" color="gray.500">Qty: {inv.quantity.toFixed(2)}</Text>
+                                            </Box>
+                                        ))}
+                                    </Stack>
+                                )}
+                            </Box>
 
-                    <InfoCard
-                        title="⏳ Long-Term Capital Gains (LTCG) Alerts"
-                        content={`Investments becoming 'Long Term' within 60 days. Holding them until then drops tax rate from ${STCG_RATE*100}% to ${LTCG_RATE*100}%.`}
-                    >
-                        {ltcgAlerts.length > 0 ? (
-                            <ul style={{ listStyle: 'none', padding: 0 }}>
-                                {ltcgAlerts.map(inv => (
-                                    <li key={inv.id} style={{ background: 'var(--bg-dark-secondary)', padding: '1rem', borderRadius: '4px', marginBottom: '0.5rem' }}>
-                                        <strong>{inv.symbol}</strong>: Long-term in <span style={{color: 'var(--brand-primary)', fontWeight: 'bold'}}>{inv.daysToLTCG} days</span>. Potential Gain: {formatCurrency(inv.gainLoss, 'INR')}
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                             <p>No positions are approaching long-term status shortly.</p>
-                        )}
-                    </InfoCard>
+                            {/* LTCG Card */}
+                            <Box className="glass-panel" p={5}>
+                                <Heading size="md" mb={4} color="blue.300">⏳ LTCG Countdown</Heading>
+                                <Text fontSize="sm" color="gray.400" mb={4}>
+                                    Assets nearing 1 year (Long Term). Wait a few days to drop tax from 15% to 10%.
+                                </Text>
+                                {ltcgOpportunities.length === 0 ? (
+                                    <Text color="gray.500">No assets approaching LTCG status soon.</Text>
+                                ) : (
+                                    <Stack spacing={3}>
+                                        {ltcgOpportunities.map(inv => (
+                                            <Box key={inv.id} p={3} bg="whiteAlpha.100" borderRadius="md">
+                                                <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
+                                                    <Text fontWeight="bold">{inv.symbol}</Text>
+                                                    <Badge colorScheme="blue">{inv.daysToLTCG} Days left</Badge>
+                                                </div>
+                                                <Progress value={100 - (inv.daysToLTCG/365*100)} size="xs" colorScheme="blue" borderRadius="full" />
+                                                <Text fontSize="xs" color="gray.400" mt={1}>Potential Tax Save: {formatCurrency(inv.gainLoss * 0.05, 'INR')}</Text>
+                                            </Box>
+                                        ))}
+                                    </Stack>
+                                )}
+                            </Box>
+                        </SimpleGrid>
+                    </TabPanel>
 
-                    <InfoCard title="📚 Learn More">
-                        <p>These strategies are simplified. Real-world tax includes cess, surcharge, and grandfathering clauses. Always consult a CA.</p>
-                        <Link to="/learn">Go to Learning Center</Link>
-                    </InfoCard>
-                </>
-            )}
+                    {/* PANEL 2: SETTINGS */}
+                    <TabPanel p={0}>
+                        <Box className="glass-panel" p={6} maxW="600px">
+                            <Heading size="md" mb={6} display="flex" alignItems="center">
+                                <EmailIcon mr={3} /> Report Settings
+                            </Heading>
+
+                            <FormControl display="flex" alignItems="center" mb={6}>
+                                <FormLabel htmlFor="email-alerts" mb="0" flex="1">
+                                    Enable Automated Email Reports
+                                </FormLabel>
+                                <Switch 
+                                    id="email-alerts" 
+                                    isChecked={emailSettings.enabled} 
+                                    onChange={(e) => setEmailSettings({...emailSettings, enabled: e.target.checked})}
+                                    colorScheme="green" 
+                                />
+                            </FormControl>
+
+                            <FormControl mb={6}>
+                                <FormLabel>Frequency</FormLabel>
+                                {/* FIXED: Added Manual Option and Handler */}
+                                <Select 
+                                    value={emailSettings.frequency}
+                                    onChange={handleFrequencyChange}
+                                    bg="var(--bg-dark-primary)"
+                                    disabled={!emailSettings.enabled}
+                                >
+                                    <option value="DAILY" style={{color:'black'}}>Daily Morning Brief</option>
+                                    <option value="WEEKLY" style={{color:'black'}}>Weekly Summary (Monday)</option>
+                                    <option value="MONTHLY" style={{color:'black'}}>Monthly Audit (1st)</option>
+                                    <option value="MANUAL" style={{color:'black'}}>Manual (On Demand Only)</option>
+                                </Select>
+                            </FormControl>
+
+                            <FormControl mb={8}>
+                                <FormLabel>Report Format</FormLabel>
+                                <RadioGroup 
+                                    value={emailSettings.format} 
+                                    onChange={(val) => setEmailSettings({...emailSettings, format: val})}
+                                >
+                                    <Stack direction="row" spacing={5}>
+                                        <Radio value="TEXT">Standard Email (Text)</Radio>
+                                        <Radio value="PDF">PDF Attachment</Radio>
+                                    </Stack>
+                                </RadioGroup>
+                            </FormControl>
+
+                            <Divider mb={6} />
+
+                            <Heading size="sm" mb={3}>Manual Actions</Heading>
+                            <Text fontSize="sm" color="gray.400" mb={4}>
+                                Trigger a report immediately to your registered email: <strong>{user?.email}</strong>
+                            </Text>
+                            
+                            <Button 
+                                leftIcon={<DownloadIcon />} 
+                                colorScheme="brand" 
+                                onClick={handleManualEmail}
+                                isLoading={sendingEmail}
+                                loadingText="Sending..."
+                                width="full"
+                            >
+                                Send {emailSettings.format} Report Now
+                            </Button>
+                        </Box>
+                    </TabPanel>
+                </TabPanels>
+            </Tabs>
         </div>
     );
 }
