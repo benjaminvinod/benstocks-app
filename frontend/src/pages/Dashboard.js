@@ -486,44 +486,50 @@ function Dashboard() {
                     </BentoCard>
 
                     {/* --- REPORTS & ALERTS CARD --- */}
-                    <BentoCard title="Reports & Alerts" colSpan={1} id="reports-section" icon={<EmailIcon />}>
-                        <Stack spacing={3}>
-                            <FormControl display="flex" alignItems="center">
-                                <FormLabel htmlFor="email-alerts" mb="0" fontSize="sm">
+                    <BentoCard title="Reports & Alerts" colSpan={{ base: 1, md: 4 }} id="reports-section" icon={<EmailIcon />}>
+                        {/* Horizontal Stack for Layout */}
+                        <HStack spacing={6} alignItems="center" width="100%" justifyContent="space-between">
+                            
+                            <FormControl display="flex" alignItems="center" maxW="150px">
+                                <FormLabel htmlFor="email-alerts" mb="0" fontSize="sm" mr={2}>
                                     Auto-Send?
                                 </FormLabel>
                                 <Switch 
                                     id="email-alerts" 
-                                    size="sm"
+                                    size="md"
                                     isChecked={emailSettings.enabled} 
                                     onChange={(e) => setEmailSettings({...emailSettings, enabled: e.target.checked})}
                                     colorScheme="green" 
                                 />
                             </FormControl>
 
-                            <Select 
-                                size="xs"
-                                value={emailSettings.frequency}
-                                onChange={handleFrequencyChange}
-                                bg="whiteAlpha.100"
-                                disabled={!emailSettings.enabled}
-                            >
-                                <option value="DAILY" style={{color:'black'}}>Daily Brief</option>
-                                <option value="WEEKLY" style={{color:'black'}}>Weekly (Mon)</option>
-                                <option value="MONTHLY" style={{color:'black'}}>Monthly (1st)</option>
-                                <option value="MANUAL" style={{color:'black'}}>Manual Only</option>
-                            </Select>
+                            <Box flex="1" maxW="300px">
+                                <Select 
+                                    size="sm"
+                                    value={emailSettings.frequency}
+                                    onChange={handleFrequencyChange}
+                                    bg="whiteAlpha.100"
+                                    disabled={!emailSettings.enabled}
+                                >
+                                    <option value="DAILY" style={{color:'black'}}>Daily Brief</option>
+                                    <option value="WEEKLY" style={{color:'black'}}>Weekly (Mon)</option>
+                                    <option value="MONTHLY" style={{color:'black'}}>Monthly (1st)</option>
+                                    <option value="MANUAL" style={{color:'black'}}>Manual Only</option>
+                                </Select>
+                            </Box>
 
-                            <RadioGroup 
-                                size="sm"
-                                value={emailSettings.format} 
-                                onChange={(val) => setEmailSettings({...emailSettings, format: val})}
-                            >
-                                <Stack direction="row">
-                                    <Radio value="TEXT">Text</Radio>
-                                    <Radio value="PDF">PDF</Radio>
-                                </Stack>
-                            </RadioGroup>
+                            <Box>
+                                <RadioGroup 
+                                    size="sm"
+                                    value={emailSettings.format} 
+                                    onChange={(val) => setEmailSettings({...emailSettings, format: val})}
+                                >
+                                    <Stack direction="row" spacing={4}>
+                                        <Radio value="TEXT">Text</Radio>
+                                        <Radio value="PDF">PDF</Radio>
+                                    </Stack>
+                                </RadioGroup>
+                            </Box>
 
                             <Button 
                                 size="sm"
@@ -531,14 +537,14 @@ function Dashboard() {
                                 colorScheme="brand" 
                                 onClick={handleManualEmail}
                                 isLoading={sendingEmail}
-                                width="full"
+                                minW="120px"
                             >
                                 Send Now
                             </Button>
-                        </Stack>
+                        </HStack>
                     </BentoCard>
 
-                    {/* --- MARKET SENTIMENT (NEWS) - ADDED BACK --- */}
+                    {/* --- MARKET SENTIMENT (NEWS) --- */}
                     <BentoCard title="Global Market Sentiment" colSpan={{ base: 1, md: 4 }}>
                         <NewsTicker />
                     </BentoCard>
