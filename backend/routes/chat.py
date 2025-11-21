@@ -267,13 +267,25 @@ async def chat_with_advisor(request: CreateChatRequest):
     
     messages_payload.append({'role': 'user', 'content': f"{full_context}\n\nUSER QUERY: {user_message}"})
 
-    # 4. RUN OLLAMA
-    try:
-        response = await asyncio.to_thread(ollama.chat, model='llama3.1', messages=messages_payload)
-        bot_reply = response['message']['content']
-    except Exception as e:
-        print(f"AI Error: {e}")
-        bot_reply = "My brain (Ollama) is offline. Check your terminal."
+    # 4. RUN OLLAMA (WITH RETRY LOGIC)
+    # This loop attempts to call Ollama 3 times.
+    # If the model is loading (Cold Start), the first attempt fails, we wait, and try again.
+    bot_reply = "My brain (Ollama) is offline. Check your terminal."
+    
+    for attempt in range(3): # Try up to 3 times
+        try:
+            # We run this in a thread to prevent blocking the main server
+            response = await asyncio.to_thread(ollama.chat, model='llama3.1', messages=messages_payload)
+            bot_reply = response['message']['content']
+            break # Success! Exit the loop
+        except Exception as e:
+            print(f"AI Error (Attempt {attempt+1}/3): {e}")
+            if attempt < 2:
+                # Wait 2 seconds before retrying to give the model time to load into RAM
+                await asyncio.sleep(2)
+            else:
+                # If it fails 3 times, keep the default error message
+                print("Ollama failed after 3 attempts. Is the service running?")
 
     # 5. SAVE
     user_msg_obj = ChatMessage(role="user", content=user_message)
