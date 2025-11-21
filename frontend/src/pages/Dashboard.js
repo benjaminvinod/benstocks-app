@@ -50,6 +50,26 @@ const marquee = keyframes`
   100% { transform: translateX(-50%); }
 `;
 
+// --- HELPER: CURRENCY DETECTION ---
+// Determines the correct currency symbol based on the ticker
+const getCurrency = (symbol) => {
+    const s = symbol?.toUpperCase() || '';
+    
+    // 1. Indian Stocks / ETFs (Standard suffix)
+    if (s.endsWith('.NS') || s.endsWith('.BO')) return 'INR';
+    
+    // 2. Crypto (Standard suffix)
+    if (s.endsWith('-USD')) return 'USD';
+    
+    // 3. Simulated Mutual Funds
+    // Heuristic: Most contain a hyphen (e.g. 'SBI-BLUE') but aren't crypto,
+    // or are specific codes like 'UTINIFTY'.
+    if (s.includes('-') || s === 'UTINIFTY') return 'INR';
+    
+    // 4. Default to USD (Standard US Stocks like AAPL, TSLA)
+    return 'USD';
+};
+
 // --- COMPONENTS ---
 
 const TickerTape = () => {
@@ -152,7 +172,6 @@ function Dashboard() {
     const [diversificationScore, setDiversificationScore] = useState(null);
     const [movers, setMovers] = useState({ gainers: [], losers: [] });
     const [isInitialLoading, setIsInitialLoading] = useState(true);
-    // --- FIX 1: Add fallback prices for Mutual Funds ---
     const [fallbackPrices, setFallbackPrices] = useState({}); 
     
     const [symbol, setSymbol] = useState('');
@@ -389,7 +408,7 @@ function Dashboard() {
                                                     <Text fontSize="xs" color="gray.500">Stock</Text>
                                                 </Box>
                                                 <Text className="mono-font" fontWeight="600">
-                                                    {price ? formatCurrency(price, sym.includes('.NS') ? 'INR' : 'USD') : <Spinner size="xs" />}
+                                                    {price ? formatCurrency(price, getCurrency(sym)) : <Spinner size="xs" />}
                                                 </Text>
                                             </Flex>
                                         </ListItem>
@@ -400,7 +419,6 @@ function Dashboard() {
                         <Button mt={4} w="full" size="xs" variant="ghost" rightIcon={<ArrowForwardIcon />}>View All</Button>
                     </BentoCard>
                     
-                    {/* --- FIX 2: Use Fallback Prices in Table --- */}
                     <BentoCard title="Your Holdings" colSpan={{ base: 1, md: 3 }} id="holdings-table">
                         {portfolio.length === 0 ? (
                             <Text color="gray.500" fontSize="sm">You don't have any investments yet.</Text>
@@ -423,7 +441,7 @@ function Dashboard() {
                                         
                                         const pnl = ((currentPrice - inv.avg_price) / inv.avg_price) * 100;
                                         const isProfitable = pnl >= 0;
-                                        const currency = inv.symbol.includes('.NS') ? 'INR' : 'USD';
+                                        const currency = getCurrency(inv.symbol);
 
                                         return (
                                             <Tr key={inv.symbol} _hover={{ bg: 'whiteAlpha.50' }} cursor="pointer" onClick={() => navigate(`/stock/${inv.symbol}`)}>
