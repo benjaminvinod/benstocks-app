@@ -1,115 +1,175 @@
 // src/pages/Portify.js
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, Flex, Text, Input, Button, VStack, HStack, Spinner, IconButton } from '@chakra-ui/react';
-import { DeleteIcon, ChatIcon, AddIcon } from '@chakra-ui/icons';
+import { DeleteIcon, ChatIcon, AddIcon, ExternalLinkIcon } from '@chakra-ui/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import BackButton from '../components/BackButton';
+import StockChart from '../components/StockChart';
 
-// Define Base URL locally or import from config. 
-// Matching client.js logic:
+// Define Base URL
 const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
+// Regex to find [WIDGET: TYPE SYMBOL]
+const WIDGET_REGEX = /\[WIDGET:\s*(CHART|TRADE)\s+([A-Z0-9.-]+)\]/;
 
 function Portify() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [sessions, setSessions] = useState([]);
     const [currentSessionId, setCurrentSessionId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const endRef = useRef(null);
-    const abortControllerRef = useRef(null); // To cancel stream if needed
+    const abortControllerRef = useRef(null);
 
-    // 1. Load Session List on Mount & Auto-Select Latest
+    // 1. Load Session List
     useEffect(() => {
         if (user?.id) {
-            fetchSessions();
+            fetchSessions(true); // true = auto-load latest chat
         }
     }, [user]);
 
-    const fetchSessions = async () => {
+    // Modified to accept an 'autoLoad' flag.
+    // We pass 'false' when refreshing after a message to prevent wiping the screen.
+    const fetchSessions = async (autoLoad = true) => {
         try {
             const res = await client.get(`/chat/sessions/${user.id}`);
             setSessions(res.data);
             
-            // AUTO-LOAD LOGIC: If sessions exist and we haven't selected one, load the first (latest)
-            if (res.data.length > 0 && !currentSessionId) {
-                loadChat(res.data[0].id);
-            } else if (res.data.length === 0) {
-                // If no sessions, show welcome message
-                startNewChat();
+            if (autoLoad) {
+                if (res.data.length > 0 && !currentSessionId) {
+                    loadChat(res.data[0].id);
+                } else if (res.data.length === 0) {
+                    startNewChat();
+                }
             }
         } catch (err) { console.error(err); }
     };
 
-    // 2. Load a Specific Chat History
+    // 2. Load Specific Chat
     const loadChat = async (sessionId) => {
         if (!sessionId) return;
         setCurrentSessionId(sessionId);
         setLoading(true);
         try {
             const res = await client.get(`/chat/history/${sessionId}`);
-            setMessages(res.data.messages || []);
+            // Add unique IDs to historical messages for React stability
+            const loadedMsgs = (res.data.messages || []).map((m, i) => ({
+                ...m,
+                id: m.id || `hist-${i}-${Date.now()}`
+            }));
+            setMessages(loadedMsgs);
         } catch (err) { console.error(err); }
         setLoading(false);
     };
 
     const startNewChat = () => {
         setCurrentSessionId(null);
-        setMessages([{ role: 'assistant', content: "Hey! I'm Portify. Pick a stock, and let's analyze it. 📈" }]);
+        setMessages([{ id: 'welcome', role: 'assistant', content: "Hey! I'm Portify. Pick a stock, and let's analyze it. 📈" }]);
     };
 
     const deleteChat = async (e, sessionId) => {
         e.stopPropagation();
         if(!window.confirm("Delete this chat?")) return;
         await client.delete(`/chat/${sessionId}`);
-        
-        // Refresh list
         const res = await client.get(`/chat/sessions/${user.id}`);
         setSessions(res.data);
-        
-        // If we deleted the active chat, switch to the next one or new chat
         if (sessionId === currentSessionId) {
-            if (res.data.length > 0) {
-                loadChat(res.data[0].id);
-            } else {
-                startNewChat();
-            }
+            if (res.data.length > 0) loadChat(res.data[0].id);
+            else startNewChat();
         }
+    };
+
+    // --- WIDGET RENDERER ---
+    const renderMessageContent = (content) => {
+        if (!content) return null;
+        const parts = content.split(/(\[WIDGET:\s*(?:CHART|TRADE)\s+[A-Z0-9.-]+\])/g);
+
+        return parts.map((part, index) => {
+            const match = part.match(WIDGET_REGEX);
+            
+            if (match) {
+                const [_, type, symbol] = match;
+                
+                if (type === 'CHART') {
+                    return (
+                        // FIXED: Container with overflow hidden to prevent UI overlap
+                        <Box key={index} my={3} p={1} bg="var(--bg-dark-primary)" borderRadius="lg" border="1px solid var(--border-color)" overflow="hidden" w="100%">
+                            <Text fontSize="xs" fontWeight="bold" color="gray.400" mb={1} px={2} pt={1}>LIVE CHART: {symbol}</Text>
+                            <Box h="350px" w="100%" position="relative">
+                                <StockChart symbol={symbol} />
+                            </Box>
+                        </Box>
+                    );
+                }
+                
+                if (type === 'TRADE') {
+                    return (
+                        <Button 
+                            key={index} 
+                            leftIcon={<ExternalLinkIcon />}
+                            colorScheme="green" 
+                            size="sm" 
+                            variant="solid"
+                            my={2}
+                            onClick={() => navigate(`/stock/${symbol}`)}
+                        >
+                            Trade {symbol} Now
+                        </Button>
+                    );
+                }
+            }
+
+            if (!part.trim()) return null;
+            return (
+                <ReactMarkdown 
+                    key={index}
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                        p: ({node, ...props}) => <Text as="span" display="inline" {...props} />, 
+                        table: ({node, ...props}) => <table style={{borderCollapse:'collapse', width:'100%', margin:'10px 0', fontSize:'0.9em'}} {...props} />,
+                        td: ({node, ...props}) => <td style={{border:'1px solid #555', padding:'6px'}} {...props} />,
+                        th: ({node, ...props}) => <th style={{border:'1px solid #555', padding:'6px', backgroundColor:'#444'}} {...props} />
+                    }}
+                >
+                    {part}
+                </ReactMarkdown>
+            );
+        });
     };
 
     // --- STREAMING HANDLER ---
     const handleSend = async () => {
         if (!input.trim()) return;
-
         const userText = input;
-        setInput(''); // Clear input immediately
+        setInput(''); 
         
-        // 1. Add User Message to UI
-        const userMsg = { role: 'user', content: userText };
-        setMessages(prev => [...prev, userMsg]);
+        // FIXED: Generate Unique IDs for State Tracking
+        const botMsgId = `bot-${Date.now()}`;
+        const userMsgId = `user-${Date.now()}`;
 
-        // 2. Add Placeholder Bot Message
-        // We add an empty string so we can append chunks to it later
-        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+        // FIXED: Use Functional Update to ensure we don't overwrite state race conditions
+        setMessages(prev => [
+            ...prev,
+            { id: userMsgId, role: 'user', content: userText },
+            { id: botMsgId, role: 'assistant', content: '' } 
+        ]);
         
         setLoading(true);
         
-        // Abort previous request if any
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
+        if (abortControllerRef.current) abortControllerRef.current.abort();
         abortControllerRef.current = new AbortController();
 
         try {
-            // We use fetch() instead of axios to handle streams properly
             const response = await fetch(`${BASE_URL}/chat/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // Manually attach token since we aren't using the axios client here
                     'Authorization': `Bearer ${user.token || localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({
@@ -122,15 +182,13 @@ function Portify() {
 
             if (!response.ok) throw new Error('Network response was not ok');
 
-            // 3. Handle Session Metadata (Sent in Headers)
+            // Handle Session Creation (Metadata in Headers)
             const newSessionId = response.headers.get('X-Session-Id');
             if (newSessionId && !currentSessionId) {
                 setCurrentSessionId(newSessionId);
-                // We delay refreshing the list slightly to let the title save
-                setTimeout(fetchSessions, 1000);
+                // DO NOT fetchSessions() here. It will reload the chat and wipe the stream.
             }
 
-            // 4. Read the Stream
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let botReply = '';
@@ -138,41 +196,38 @@ function Portify() {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-
                 const chunk = decoder.decode(value, { stream: true });
                 botReply += chunk;
 
-                // Update the LAST message (the placeholder we added)
-                setMessages(prev => {
-                    const newMsgs = [...prev];
-                    const lastMsgIndex = newMsgs.length - 1;
-                    // Create a new object to trigger re-render
-                    newMsgs[lastMsgIndex] = { 
-                        ...newMsgs[lastMsgIndex], 
-                        content: botReply 
-                    };
-                    return newMsgs;
-                });
+                // FIXED: Update the specific message ID
+                setMessages(prev => prev.map(msg => 
+                    msg.id === botMsgId 
+                        ? { ...msg, content: botReply } 
+                        : msg
+                ));
             }
-
         } catch (err) {
             if (err.name !== 'AbortError') {
-                console.error("Streaming Error:", err);
-                setMessages(prev => [...prev, { role: 'assistant', content: "\n[Error: Portify connection lost.]" }]);
+                setMessages(prev => prev.map(msg => 
+                    msg.id === botMsgId 
+                        ? { ...msg, content: msg.content + "\n[Error: Portify connection lost.]" } 
+                        : msg
+                ));
             }
         } finally {
             setLoading(false);
             abortControllerRef.current = null;
+            // FIXED: Update Sidebar WITHOUT reloading the active chat window
+            fetchSessions(false); 
         }
     };
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]); // Auto-scroll as text streams in
+    }, [messages]);
 
     return (
         <Flex h="90vh" className="container" p={0} overflow="hidden" flexDirection={{base: 'column', md: 'row'}}>
-            {/* Sidebar (History) */}
             <Box w={{base: '100%', md: '250px'}} bg="var(--bg-dark-secondary)" borderRight="1px solid var(--border-color)" p={4}>
                 <Button leftIcon={<AddIcon />} width="full" mb={4} colorScheme="blue" onClick={startNewChat}>New Chat</Button>
                 <VStack align="stretch" spacing={2} overflowY="auto" h="calc(100% - 60px)">
@@ -189,19 +244,14 @@ function Portify() {
                         >
                             <Text fontSize="sm" noOfLines={1} color="var(--text-primary)">{s.title}</Text>
                             <IconButton 
-                                size="xs" 
-                                icon={<DeleteIcon />} 
-                                variant="ghost" 
-                                color="gray.500" 
-                                _hover={{ color: 'red.400' }}
-                                onClick={(e) => deleteChat(e, s.id)}
+                                size="xs" icon={<DeleteIcon />} variant="ghost" color="gray.500" 
+                                _hover={{ color: 'red.400' }} onClick={(e) => deleteChat(e, s.id)}
                             />
                         </HStack>
                     ))}
                 </VStack>
             </Box>
 
-            {/* Main Chat Interface */}
             <Flex flex={1} direction="column" bg="var(--bg-primary-dynamic)">
                 <Box p={4} borderBottom="1px solid var(--border-color)">
                     <HStack>
@@ -214,38 +264,33 @@ function Portify() {
                 <VStack flex={1} overflowY="auto" p={6} spacing={4} align="stretch">
                     {messages.map((msg, i) => (
                         <Box 
-                            key={i} 
+                            key={msg.id || i} // Use ID for key to prevent React render bugs
                             alignSelf={msg.role === 'user' ? 'flex-end' : 'flex-start'}
                             bg={msg.role === 'user' ? 'blue.600' : 'gray.700'}
                             color="white"
                             px={5} py={3} borderRadius="lg"
-                            maxW="80%"
+                            maxW={{base: "95%", md: "80%"}}
                             fontSize="md"
                         >
-                            {/* Render Markdown (Tables, Bold, Lists) */}
-                            <ReactMarkdown 
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                    table: ({node, ...props}) => <table style={{borderCollapse:'collapse', width:'100%', margin:'10px 0'}} {...props} />,
-                                    td: ({node, ...props}) => <td style={{border:'1px solid #555', padding:'8px'}} {...props} />,
-                                    th: ({node, ...props}) => <th style={{border:'1px solid #555', padding:'8px', backgroundColor:'#444'}} {...props} />
-                                }}
-                            >
-                                {msg.content}
-                            </ReactMarkdown>
+                            {msg.role === 'user' ? (
+                                <Text>{msg.content}</Text>
+                            ) : (
+                                <Box>
+                                    {renderMessageContent(msg.content)}
+                                </Box>
+                            )}
                         </Box>
                     ))}
                     <div ref={endRef} />
                 </VStack>
 
-                {/* Input Box */}
                 <Box p={4} bg="var(--bg-dark-secondary)">
                     <HStack>
                         <Input 
                             value={input} 
                             onChange={(e) => setInput(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Ask about a stock..." 
+                            placeholder="Ask about a stock (e.g. 'Show chart for AAPL')" 
                             bg="var(--bg-dark-primary)"
                         />
                         <IconButton icon={<ChatIcon />} colorScheme="blue" onClick={handleSend} isLoading={loading} />

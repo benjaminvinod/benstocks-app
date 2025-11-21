@@ -20,10 +20,14 @@ async def get_financial_news():
         raise HTTPException(status_code=500, detail="News API key is not configured on the server.")
 
     try:
+        # UPDATED QUERY: Removed quotes around single words to broaden search results.
+        # Quotes like '"stocks"' force the API to look for the exact phrase including quotes, 
+        # which drastically limits results.
         response = api.news_api(
-            q='"stocks" OR "mutual funds" OR "ETFs" OR "corporate bonds" OR "finance" OR "investing"',
+            q='stocks OR "mutual funds" OR ETFs OR "corporate bonds" OR finance OR investing',
             language="en",
-            category="business"
+            category="business",
+            size=10  # Explicitly request 10 articles
         )
         
         articles = response.get("results", [])
@@ -35,6 +39,7 @@ async def get_financial_news():
             title = article.get("title")
             link = article.get("link")
             
+            # Filter out duplicates or empty titles
             if title and link and "No title" not in title and title not in seen_titles:
                 sentiment = analyze_sentiment(title)
                 processed_news.append({

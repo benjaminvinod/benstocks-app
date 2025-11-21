@@ -7,7 +7,6 @@ import numpy as np
 from datetime import datetime
 from typing import List, Optional
 
-# --- NEW IMPORTS FOR STREAMING ---
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from ollama import AsyncClient
@@ -32,25 +31,44 @@ STOP_WORDS = {
     "SHOULD", "I", "MY", "PORTFOLIO", "THINK"
 }
 
-# --- ENHANCED SYSTEM PROMPT (ROAST MODE + PRO TRADER) ---
+# --- ENHANCED SYSTEM PROMPT (PHASE 5: CLEAN FORMATTING) ---
 ENHANCED_SYSTEM_PROMPT = """
 You are Portify, a witty, sharp-tongued Wall Street veteran and the user's financial wingman.
 Your goal is to help them win the BenStocks simulation.
 
 ### YOUR PERSONALITY
-- **Direct & Punchy:** Don't waffle. Get to the point.
-- **Witty & Sarcastic:** If the user owns bad stocks (high losses, terrible P/E), gently roast them.
-- **Not a Robot:** Use emojis (🚀, 📉, 🤡, 💰) and casual trader slang (HODL, Bagholder, Mooning, Dead Cat Bounce).
-- **Analyst:** Use the provided MACD, RSI, and Bollinger Bands to justify your view. (e.g., "MACD is bearish, so don't catch the falling knife.").
+- **Conversational & Human:** Speak like a trader talking to a friend. Be direct.
+- **Witty:** Use emojis (🚀, 📉, 🤡) and slang (HODL, Bagholder) where appropriate.
 
-### YOUR DATA SOURCES (Use these strict priorities)
+### VISUAL STYLE (CRITICAL)
+- **NO WALLS OF TEXT:** Users hate reading long paragraphs. Break it up!
+- **Use Bullet Points:** When listing data (Price, P/E, RSI), ALWAYS use a clean bulleted list.
+- **Bold Key Info:** Use **Bold** for prices, verdicts, and key signals so they pop out.
+
+### STRUCTURE YOUR RESPONSE LIKE THIS:
+1. **The Hook:** A punchy opening reaction. (e.g., "TCS? The elephant in the room! 🐘")
+2. **The Numbers:** A bullet list of the raw data.
+   - **Price:** $150
+   - **Trend:** Bullish 🟢
+   - **RSI:** 70 (Overbought)
+3. **The Verdict:** Your analysis of what the numbers mean.
+4. **The Play:** What should the user do? (Buy/Sell/Hold).
+
+### YOUR DATA SOURCES
 1. **User's Portfolio:** Check if they OWN the stock. Tailor advice to their position.
-2. **Technical Analysis:** Use RSI (Overbought > 70, Oversold < 30), MACD (Crossovers), and Bollinger Bands (Volatility).
-3. **News:** Reference the provided headlines if relevant.
+2. **Technical Analysis:** Use RSI, MACD, and Bollinger Bands.
+3. **News:** Reference headlines if relevant.
+
+### DATA HANDLING (STRICT)
+- **No Data:** If a holding has "No Data", **DO NOT LIST IT**. Ignore it.
+
+### INTERACTIVE WIDGETS
+Use these tags at the END of your response if relevant:
+1. **Charts:** `[WIDGET: CHART SYMBOL]` (e.g., `[WIDGET: CHART AAPL]`).
+2. **Trading:** `[WIDGET: TRADE SYMBOL]` (e.g., `[WIDGET: TRADE TSLA]`).
 
 ### HALLUCINATION PROTOCOL
-- If the "Market Data" section says "No Data", **DO NOT** invent a price. Admit you can't see it.
-- If you assumed a ticker (e.g., AAPL for "Apple"), mention it: "I'm looking at Apple Inc (AAPL)..."
+- If "Market Data" says "No Data", **DO NOT** invent a price.
 """
 
 # --- ADVANCED TECHNICAL ANALYSIS ENGINE ---
@@ -69,15 +87,15 @@ def calculate_technicals(history_df):
     current_rsi = rsi.iloc[-1]
     
     rsi_verdict = "Neutral"
-    if current_rsi > 70: rsi_verdict = "Overbought (Sell Signal?)"
-    elif current_rsi < 30: rsi_verdict = "Oversold (Buy Dip?)"
+    if current_rsi > 70: rsi_verdict = "Overbought"
+    elif current_rsi < 30: rsi_verdict = "Oversold"
 
     # 2. Trend (SMA 50)
     trend = "Sideways"
     if len(history_df) > 50:
         sma_50 = history_df['Close'].rolling(window=50).mean().iloc[-1]
         current_price = history_df['Close'].iloc[-1]
-        trend = "Uptrend 🐂" if current_price > sma_50 else "Downtrend 🐻"
+        trend = "Uptrend" if current_price > sma_50 else "Downtrend"
 
     # 3. MACD (12, 26, 9)
     exp1 = history_df['Close'].ewm(span=12, adjust=False).mean()
@@ -87,7 +105,7 @@ def calculate_technicals(history_df):
     
     curr_macd = macd.iloc[-1]
     curr_sig = signal.iloc[-1]
-    macd_verdict = "Bullish Crossover 🟢" if curr_macd > curr_sig else "Bearish Crossover 🔴"
+    macd_verdict = "Bullish Crossover" if curr_macd > curr_sig else "Bearish Crossover"
 
     # 4. Bollinger Bands (20, 2)
     sma_20 = history_df['Close'].rolling(window=20).mean()
@@ -97,8 +115,8 @@ def calculate_technicals(history_df):
     
     current_price = history_df['Close'].iloc[-1]
     bb_status = "Normal"
-    if current_price > upper_band.iloc[-1]: bb_status = "Breaking Out (High)"
-    if current_price < lower_band.iloc[-1]: bb_status = "Oversold (Low)"
+    if current_price > upper_band.iloc[-1]: bb_status = "High (Breakout?)"
+    if current_price < lower_band.iloc[-1]: bb_status = "Low (Oversold?)"
 
     return (
         f"RSI: {current_rsi:.1f} ({rsi_verdict}) | "
@@ -120,15 +138,12 @@ def search_ticker_from_query(query: str) -> List[str]:
         
         found_tickers = []
         if quotes:
-            # Priority 1: Equity (Stock)
             for q in quotes:
                 if q.get("quoteType") == "EQUITY":
                     found_tickers.append(q.get("symbol"))
                     break 
-            # Priority 2: If no equity, take first result (could be Crypto/ETF)
             if not found_tickers and quotes:
                 found_tickers.append(quotes[0].get("symbol"))
-                
         return found_tickers
     except:
         return []
@@ -150,7 +165,6 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
         if pf.investments:
             holdings_desc = []
             for inv in pf.investments:
-                status = "New"
                 user_holdings_map[inv.symbol] = inv
                 holdings_desc.append(f"{inv.symbol} ({inv.quantity} units)")
             portfolio_context = f"User Holdings: {', '.join(holdings_desc)}. Cash: ${pf.history[-1].cash_balance:.0f}"
@@ -161,7 +175,6 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
     try:
         news_items = await get_financial_news()
         if news_items:
-            # Take top 3 headlines
             headlines = [f"- {n['title']} ({n['sentiment']})" for n in news_items[:3]]
             news_context = "\n".join(headlines)
     except: pass
@@ -172,9 +185,8 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
     
     detected_tickers = set()
     
-    # A. Check if user mentioned a stock they OWN (Context Awareness)
+    # A. Check if user mentioned a stock they OWN
     for word in candidates:
-        # Simple check if word matches a holding symbol
         for holding_symbol in user_holdings_map.keys():
             if word.upper() in holding_symbol:
                 detected_tickers.add(holding_symbol)
@@ -189,14 +201,14 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
     
     market_data_str = ""
     if not detected_tickers:
-        market_data_str = "[No specific ticker identified in query]"
+        market_data_str = "[No specific ticker identified]"
     else:
         import yfinance as yf
         
         def fetch_full_analysis(symbol):
             try:
                 ticker = yf.Ticker(symbol)
-                # Get 3mo history for MACD calculation
+                # Get 3mo history for MACD
                 hist = ticker.history(period="3mo")
                 info = ticker.info or {}
                 
@@ -209,7 +221,7 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
                 if symbol in user_holdings_map:
                     inv = user_holdings_map[symbol]
                     pnl = (current_price - inv.buy_price) / inv.buy_price * 100
-                    holding_info = f" | [USER OWNS THIS: Avg Buy {inv.buy_price:.2f}, P/L: {pnl:.1f}%]"
+                    holding_info = f" | [USER OWNS: Avg {inv.buy_price:.2f}, P/L: {pnl:.1f}%]"
 
                 return (
                     f"| {symbol} | Price: {current_price:.2f} {info.get('currency','')} | "
@@ -224,7 +236,7 @@ async def resolve_context_and_fetch(user_message: str, user_id: str):
         if valid_rows:
             market_data_str = "\n".join(valid_rows)
         else:
-            market_data_str = "[System: Could not fetch live data for detected names. Do not hallucinate prices.]"
+            market_data_str = "[System: No live data found.]"
 
     return portfolio_context, news_context, market_data_str
 
@@ -252,8 +264,7 @@ async def delete_chat_session(session_id: str):
 @router.post("/")
 async def chat_with_advisor(request: CreateChatRequest):
     """
-    Phase 2: Streaming Response Implementation.
-    Returns a Server-Sent Stream of text while saving history in the background.
+    Phase 2, 3, 4 & 5: Streaming + Action Tags + Clean Formatting.
     """
     user_id = request.user_id
     raw_message = request.message
@@ -262,7 +273,7 @@ async def chat_with_advisor(request: CreateChatRequest):
     if not raw_message: raise HTTPException(status_code=400, detail="Empty message")
     user_message = re.sub(r'[^\w\s.,?!@#$%^&*()\-]', '', raw_message).strip()
 
-    # 1. Manage Session (Create Immediately if New)
+    # 1. Manage Session
     session_data = None
     if session_id:
         session_data = await chats_collection.find_one({"id": session_id})
@@ -279,7 +290,7 @@ async def chat_with_advisor(request: CreateChatRequest):
 
     # 3. CONSTRUCT PROMPT
     messages_payload = [{'role': 'system', 'content': ENHANCED_SYSTEM_PROMPT}]
-    messages_payload.extend(FEW_SHOT_EXAMPLES)
+    # messages_payload.extend(FEW_SHOT_EXAMPLES) 
     
     previous_msgs = session_data.get("messages", [])
     for m in previous_msgs[-6:]: 
@@ -294,31 +305,31 @@ async def chat_with_advisor(request: CreateChatRequest):
     )
     messages_payload.append({'role': 'user', 'content': f"{full_context}\n\nUSER QUERY: {user_message}"})
 
-    # 4. STREAM GENERATOR WITH RETRY
+    # 4. STREAM GENERATOR
     async def response_generator():
         full_reply = ""
-        client = AsyncClient() # Use Async Ollama Client
+        client = AsyncClient()
         stream_started = False
         
-        for attempt in range(3): # Retry loop for Cold Start
+        for attempt in range(3):
             try:
                 async for part in await client.chat(model='llama3.1', messages=messages_payload, stream=True):
                     stream_started = True
                     chunk = part['message']['content']
                     full_reply += chunk
                     yield chunk
-                break # Success
+                break 
             except Exception as e:
                 print(f"Stream Error (Attempt {attempt+1}): {e}")
                 if stream_started:
-                    yield f"\n[Connection Error: {e}]"
+                    yield f"\n[Error: {e}]"
                     break
                 else:
-                    await asyncio.sleep(2) # Wait for model load
+                    await asyncio.sleep(2)
                     if attempt == 2:
-                        yield "My brain (Ollama) is offline. Check terminal."
+                        yield "My brain (Ollama) is offline."
 
-        # 5. SAVE TO DB (After stream finishes)
+        # 5. SAVE TO DB
         user_msg_obj = ChatMessage(role="user", content=user_message)
         bot_msg_obj = ChatMessage(role="assistant", content=full_reply)
         
@@ -330,12 +341,8 @@ async def chat_with_advisor(request: CreateChatRequest):
             }
         )
 
-    # Return Streaming Response with Session Metadata in Headers
     return StreamingResponse(
         response_generator(), 
         media_type="text/plain",
-        headers={
-            "X-Session-Id": session_id,
-            "X-Title": session_data["title"]
-        }
+        headers={"X-Session-Id": session_id, "X-Title": session_data["title"]}
     )
