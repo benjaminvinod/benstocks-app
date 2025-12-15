@@ -43,12 +43,21 @@ class Transaction(BaseModel):
     total_value_inr: Optional[float] = None 
     order_type: Optional[Literal["MARKET", "LIMIT"]] = "MARKET"
     limit_price: Optional[float] = None
-    # --- ADDED: Transaction Fee ---
     transaction_fee: Optional[float] = 0.0
 
 class SellRequest(BaseModel):
     investment_id: str 
     quantity_to_sell: float
+
+# --- NEW: Price Alert Model ---
+class PriceAlert(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    symbol: str
+    target_price: float
+    condition: Literal["ABOVE", "BELOW"] # e.g., Notify if price goes ABOVE target
+    status: Literal["ACTIVE", "TRIGGERED"] = "ACTIVE"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class PyObjectId(ObjectId):
     @classmethod

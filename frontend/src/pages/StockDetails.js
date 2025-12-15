@@ -3,6 +3,10 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { getStockPrice } from "../api/stocks";
 import { buyInvestment, getWatchlist, addToWatchlist, removeFromWatchlist } from "../api/portfolio";
+import { getFinancialNews } from "../api/newsApi"; 
+// --- NEW: Import Alert API ---
+import { createAlert, getUserAlerts, deleteAlert } from "../api/alerts";
+
 import { useAuth } from "../context/AuthContext";
 import { formatCurrency, formatLargeNumber } from "../utils/format";
 import BackButton from '../components/BackButton';
@@ -12,7 +16,11 @@ import { DIVIDEND_STOCKS } from '../utils/dividendAssets';
 import { useWebSocket } from '../context/WebSocketContext';
 import Tooltip from '../components/Tooltip';
 import { useNumberFormat } from '../context/NumberFormatContext';
-import { Select, Input, FormControl, FormLabel, Box, Text } from '@chakra-ui/react';
+import { 
+    Select, Input, FormControl, FormLabel, Box, Text, Badge, Flex, Link, 
+    Skeleton, Stack, VStack, Button, HStack, IconButton, Divider, Heading 
+} from '@chakra-ui/react';
+import { ExternalLinkIcon, BellIcon, DeleteIcon } from '@chakra-ui/icons';
 
 const Stat = ({ label, value, tooltipText }) => (
     <div style={{ flex: '1 1 150px', background: 'var(--bg-dark-primary)', padding: '1rem', borderRadius: '8px', minWidth: '150px' }}>
@@ -76,6 +84,114 @@ const FinancialsSnapshot = ({ stockData }) => {
     );
 };
 
+const StockNews = ({ symbol, news, loading }) => {
+    if (loading) {
+        return (
+            <Stack spacing={4} mt={8}>
+                <Text fontSize="lg" fontWeight="bold">Latest News for {symbol}</Text>
+                <Skeleton height="80px" borderRadius="md" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+                <Skeleton height="80px" borderRadius="md" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+            </Stack>
+        );
+    }
+    if (!news || news.length === 0) return null;
+    return (
+        <Box mt={8}>
+            <Text fontSize="xl" fontWeight="bold" mb={4}>Latest News for {symbol}</Text>
+            <VStack spacing={4} align="stretch">
+                {news.map((item, index) => (
+                    <Box key={index} p={4} bg="var(--bg-dark-primary)" borderRadius="lg" border="1px solid var(--border-color)">
+                        <Flex justify="space-between" align="center" mb={2}>
+                            <Badge colorScheme={item.sentiment === 'POSITIVE' ? 'green' : item.sentiment === 'NEGATIVE' ? 'red' : 'gray'}>
+                                {item.sentiment}
+                            </Badge>
+                            <Text fontSize="xs" color="gray.400">{item.pubDate ? new Date(item.pubDate).toLocaleDateString() : 'Recent'}</Text>
+                        </Flex>
+                        <Link href={item.link} isExternal fontWeight="bold" fontSize="md" _hover={{ color: 'brand.400', textDecoration: 'none' }}>
+                            {item.title} <ExternalLinkIcon mx="2px" />
+                        </Link>
+                    </Box>
+                ))}
+            </VStack>
+        </Box>
+    );
+};
+
+// --- NEW COMPONENT: Alerts Manager ---
+const AlertsManager = ({ symbol, currentPrice, user }) => {
+    const [targetPrice, setTargetPrice] = useState("");
+    const [condition, setCondition] = useState("ABOVE");
+    const [alerts, setAlerts] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (user?.id) fetchAlerts();
+    }, [user, symbol]);
+
+    const fetchAlerts = async () => {
+        try {
+            const data = await getUserAlerts(user.id);
+            // Filter alerts only for THIS symbol
+            setAlerts(data.filter(a => a.symbol === symbol));
+        } catch (err) { console.error(err); }
+    };
+
+    const handleAddAlert = async () => {
+        if (!targetPrice) return;
+        setLoading(true);
+        try {
+            await createAlert(user.id, symbol, targetPrice, condition);
+            toast.success("Alert Set!");
+            setTargetPrice("");
+            fetchAlerts();
+        } catch (err) { toast.error("Failed to set alert"); }
+        setLoading(false);
+    };
+
+    const handleDelete = async (id) => {
+        try {
+            await deleteAlert(id);
+            toast.info("Alert deleted");
+            fetchAlerts();
+        } catch (err) { toast.error("Delete failed"); }
+    };
+
+    return (
+        <Box mt={8} p={5} bg="var(--bg-dark-secondary)" borderRadius="lg" border="1px solid var(--border-color)">
+            <Heading size="md" mb={4} display="flex" alignItems="center">
+                <BellIcon mr={2} color="brand.400"/> Price Alerts
+            </Heading>
+
+            <HStack mb={4}>
+                <Select maxW="120px" value={condition} onChange={e => setCondition(e.target.value)} bg="var(--bg-dark-primary)">
+                    <option value="ABOVE" style={{color:'black'}}>Above</option>
+                    <option value="BELOW" style={{color:'black'}}>Below</option>
+                </Select>
+                <Input 
+                    type="number" placeholder="Target Price" 
+                    value={targetPrice} onChange={e => setTargetPrice(e.target.value)}
+                    bg="var(--bg-dark-primary)"
+                />
+                <Button onClick={handleAddAlert} isLoading={loading} colorScheme="blue">Set Alert</Button>
+            </HStack>
+
+            {alerts.length > 0 && (
+                <VStack align="stretch" spacing={2} mt={4}>
+                    <Text fontSize="xs" color="gray.400" textTransform="uppercase">Active Alerts</Text>
+                    {alerts.map(alert => (
+                        <Flex key={alert._id} justify="space-between" align="center" p={3} bg="var(--bg-dark-primary)" borderRadius="md">
+                            <Text fontSize="sm">
+                                Notify if <b>{alert.symbol}</b> goes <b>{alert.condition} {alert.target_price}</b>
+                            </Text>
+                            <IconButton size="xs" icon={<DeleteIcon />} colorScheme="red" variant="ghost" onClick={() => handleDelete(alert._id)}/>
+                        </Flex>
+                    ))}
+                </VStack>
+            )}
+        </Box>
+    );
+};
+
 function StockDetails() {
     const { symbol } = useParams();
     const { user, refreshUser } = useAuth();
@@ -83,6 +199,9 @@ function StockDetails() {
     const { formatNumber } = useNumberFormat();
 
     const [stockData, setStockData] = useState(null);
+    const [news, setNews] = useState([]); 
+    const [newsLoading, setNewsLoading] = useState(false);
+    
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     
@@ -118,6 +237,13 @@ function StockDetails() {
                     const watchlistRes = await getWatchlist(user.id);
                     if (Array.isArray(watchlistRes)) setIsWatchlisted(watchlistRes.includes(symbol.toUpperCase()));
                 }
+
+                setNewsLoading(true);
+                getFinancialNews(symbol).then(data => {
+                    setNews(data);
+                    setNewsLoading(false);
+                });
+
             } catch (err) {
                 setError(err.message || "Could not fetch stock data.");
             } finally {
@@ -135,25 +261,21 @@ function StockDetails() {
         
         if (!currentPrice || currentPrice <= 0 || !buyQuantity || buyQuantity <= 0) {
             toast.error("Invalid price or quantity.");
-            setBuyLoading(false);
-            return;
+            setBuyLoading(false); return;
         }
 
         if (orderType === "LIMIT" && Number(limitPrice) < currentPrice) {
              toast.error(`Limit Order Error: Current price ${currentPrice} is higher than your limit ${limitPrice}. Order rejected.`);
-             setBuyLoading(false);
-             return;
+             setBuyLoading(false); return;
         }
         
-        // Estimate cost + 0.1% fee
         const rawCost = buyQuantity * (orderType === "LIMIT" ? Number(limitPrice) : currentPrice);
         const fee = rawCost * 0.001; 
         const totalEstimated = rawCost + fee;
 
         if (user.balance < totalEstimated) {
             toast.error("Insufficient balance (including fees).");
-            setBuyLoading(false);
-            return;
+            setBuyLoading(false); return;
         }
         
         try {
@@ -165,7 +287,6 @@ function StockDetails() {
             };
             
             await buyInvestment(user.id, investmentData, orderType, orderType === "LIMIT" ? limitPrice : null);
-            
             await refreshUser();
             toast.success(`Successfully executed ${orderType} BUY for ${stockData.symbol}!`);
             setQuantity(1);
@@ -189,11 +310,8 @@ function StockDetails() {
                 toast.success(`Added to watchlist!`);
                 setIsWatchlisted(true);
             }
-        } catch (err) {
-            toast.error("Watchlist update failed.");
-        } finally {
-            setWatchlistLoading(false);
-        }
+        } catch (err) { toast.error("Watchlist update failed."); } 
+        finally { setWatchlistLoading(false); }
     };
 
     const formContainerStyle = {
@@ -205,8 +323,6 @@ function StockDetails() {
     };
 
     const currencyCode = stockData?.currency || 'USD';
-    
-    // Calc Estimated
     const baseCost = Number(quantity) * (orderType === "LIMIT" ? Number(limitPrice) : (stockData?.close || 0));
     const estFee = baseCost * 0.001;
 
@@ -237,31 +353,11 @@ function StockDetails() {
 
             <h2>Key Metrics</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <Stat 
-                    label="Market Cap" 
-                    value={formatNumber(stockData.market_cap)} 
-                    tooltipText="Total value of all a company's shares of stock."
-                />
-                <Stat 
-                    label="P/E Ratio" 
-                    value={stockData.pe_ratio !== null ? stockData.pe_ratio.toFixed(2) : 'N/A'} 
-                    tooltipText="Ratio of a company's share price to its earnings per share."
-                />
-                <Stat 
-                    label="Dividend Yield" 
-                    value={stockData.dividend_yield !== null ? (stockData.dividend_yield * 100).toFixed(2) + '%' : 'N/A'} 
-                    tooltipText="Annual dividend payment as a percentage of the stock's current price."
-                />
-                <Stat 
-                    label="52-Week High" 
-                    value={formatCurrency(stockData.week_52_high, currencyCode)} 
-                    tooltipText="The highest price a stock has traded at in the last year."
-                />
-                <Stat 
-                    label="52-Week Low" 
-                    value={formatCurrency(stockData.week_52_low, currencyCode)} 
-                    tooltipText="The lowest price a stock has traded at in the last year."
-                />
+                <Stat label="Market Cap" value={formatNumber(stockData.market_cap)} tooltipText="Total value of all a company's shares of stock." />
+                <Stat label="P/E Ratio" value={stockData.pe_ratio !== null ? stockData.pe_ratio.toFixed(2) : 'N/A'} tooltipText="Ratio of a company's share price to its earnings per share." />
+                <Stat label="Dividend Yield" value={stockData.dividend_yield !== null ? (stockData.dividend_yield * 100).toFixed(2) + '%' : 'N/A'} tooltipText="Annual dividend payment as a percentage of the stock's current price." />
+                <Stat label="52-Week High" value={formatCurrency(stockData.week_52_high, currencyCode)} tooltipText="The highest price a stock has traded at in the last year." />
+                <Stat label="52-Week Low" value={formatCurrency(stockData.week_52_low, currencyCode)} tooltipText="The lowest price a stock has traded at in the last year." />
             </div>
             
             <FinancialsSnapshot stockData={stockData} />
@@ -271,16 +367,9 @@ function StockDetails() {
             <div style={formContainerStyle}>
                 <h2>Place Order: {stockData.symbol}</h2>
                 <form onSubmit={handleBuyStock}>
-                    
                     <div className="form-group" style={{ marginBottom: '1rem' }}>
                         <label>Order Type</label>
-                        <Select 
-                            value={orderType} 
-                            onChange={(e) => setOrderType(e.target.value)}
-                            bg="var(--bg-dark-primary)" 
-                            color="white"
-                            borderColor="var(--border-color)"
-                        >
+                        <Select value={orderType} onChange={(e) => setOrderType(e.target.value)} bg="var(--bg-dark-primary)" color="white" borderColor="var(--border-color)">
                             <option value="MARKET" style={{color: 'black'}}>Market Order</option>
                             <option value="LIMIT" style={{color: 'black'}}>Limit Order</option>
                         </Select>
@@ -288,46 +377,32 @@ function StockDetails() {
                             {orderType === "MARKET" ? "Buy immediately at current price." : "Buy only if price is below your limit."}
                         </Text>
                     </div>
-
                     {orderType === "LIMIT" && (
                         <div className="form-group" style={{ marginBottom: '1rem' }}>
                             <label>Limit Price</label>
-                            <Input 
-                                type="number" 
-                                value={limitPrice} 
-                                onChange={(e) => setLimitPrice(e.target.value)}
-                                step="0.01"
-                                bg="var(--bg-dark-primary)"
-                            />
+                            <Input type="number" value={limitPrice} onChange={(e) => setLimitPrice(e.target.value)} step="0.01" bg="var(--bg-dark-primary)"/>
                         </div>
                     )}
-
                     <div className="form-group">
                         <label>Quantity</label>
-                        <Input 
-                            type="number" 
-                            value={quantity} 
-                            onChange={(e) => setQuantity(e.target.value)} 
-                            min="1" 
-                            step="1" 
-                            required 
-                            bg="var(--bg-dark-primary)" 
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px' }} 
-                        />
+                        <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} min="1" step="1" required bg="var(--bg-dark-primary)" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px' }} />
                     </div>
-                    
                     <div style={{ color: 'var(--text-primary)', marginBottom: '1rem', fontSize: '1.1rem' }}>
                         <span style={{display: 'block'}}>Base Cost: {formatCurrency(baseCost, currencyCode)}</span>
                         <span style={{display: 'block', fontSize: '0.9rem', color: 'var(--text-secondary)'}}>+ Brokerage (0.1%): {formatCurrency(estFee, currencyCode)}</span>
                         <hr style={{borderColor: 'var(--border-color)', margin: '0.5rem 0'}} />
                         <strong>Total Cost: {formatCurrency(baseCost + estFee, currencyCode)}</strong>
                     </div>
-                    
                     <button type="submit" disabled={buyLoading || !user} style={{ width: '100%' }}>
                         {buyLoading ? 'Processing...' : `Buy ${orderType === 'LIMIT' ? '@ Limit' : '@ Market'}`}
                     </button>
                 </form>
             </div>
+
+            {/* --- NEW SECTION: Alerts Manager --- */}
+            {user && stockData && <AlertsManager symbol={stockData.symbol} currentPrice={stockData.close} user={user} />}
+            
+            <StockNews symbol={symbol} news={news} loading={newsLoading} />
         </div>
     );
 }
