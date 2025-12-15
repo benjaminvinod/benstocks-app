@@ -1,12 +1,30 @@
-import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+// src/pages/Signup.js
+
+import React, { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate, Link as RouterLink } from "react-router-dom";
+
+// Chakra UI (same style approach as Login.js)
+import {
+  Box,
+  Heading,
+  Text,
+  FormControl,
+  FormLabel,
+  Input,
+  Button,
+  VStack,
+  Alert,
+  AlertIcon,
+  Link,
+} from "@chakra-ui/react";
 
 function Signup() {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const { signup } = useAuth();
@@ -14,67 +32,92 @@ function Signup() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
       await signup(username, email, password);
-      navigate('/dashboard'); // Redirect to dashboard on success
+      navigate("/dashboard");
     } catch (err) {
-      setError(err.message || 'Failed to sign up. Please try again.');
+      // AuthContext throws new Error(...) so err.message is what we want here.
+      setError(err?.message || "Failed to sign up. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="container" style={{ maxWidth: '500px', marginTop: '5rem' }}>
-      <h1 style={{ textAlign: 'center' }}>Create Account</h1>
-      <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-        Start your simulated investment journey.
-      </p>
+    <Box
+      maxW="500px"
+      mx="auto"
+      mt="5rem"
+      p={8}
+      bg="var(--bg-dark-secondary)"
+      borderRadius="lg"
+      borderWidth="1px"
+      borderColor="var(--border-color)"
+    >
+      <VStack as="form" spacing={6} onSubmit={handleSubmit}>
+        <VStack spacing={2} w="full">
+          <Heading as="h1">Create Account</Heading>
+          <Text color="var(--text-secondary)" textAlign="center">
+            Start your simulated investment journey.
+          </Text>
+        </VStack>
 
-      {error && <p style={{ color: 'var(--danger)', textAlign: 'center' }}>{error}</p>}
+        {error && (
+          <Alert status="error" borderRadius="md">
+            <AlertIcon />
+            {error}
+          </Alert>
+        )}
 
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="username">Username</label>
-          <input
+        <FormControl isRequired>
+          <FormLabel>Username</FormLabel>
+          <Input
             type="text"
-            id="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            required
+            placeholder="Your username"
+            autoComplete="username"
           />
-        </div>
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input
+        </FormControl>
+
+        <FormControl isRequired>
+          <FormLabel>Email</FormLabel>
+          <Input
             type="email"
-            id="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
+            placeholder="you@example.com"
+            autoComplete="email"
           />
-        </div>
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <input
+        </FormControl>
+
+        <FormControl isRequired>
+          <FormLabel>Password</FormLabel>
+          <Input
             type="password"
-            id="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
+            placeholder="Minimum 6 characters"
             minLength={6}
+            autoComplete="new-password"
           />
-        </div>
-        <button type="submit" disabled={loading} style={{ width: '100%' }}>
-          {loading ? 'Creating Account...' : 'Sign Up'}
-        </button>
-      </form>
-      <p style={{ textAlign: 'center', marginTop: '1.5rem', color: 'var(--text-secondary)' }}>
-        Already have an account? <Link to="/login">Log In</Link>
-      </p>
-    </div>
+        </FormControl>
+
+        <Button type="submit" width="full" isLoading={loading}>
+          Sign Up
+        </Button>
+
+        <Text color="var(--text-secondary)">
+          Already have an account?{" "}
+          <Link as={RouterLink} to="/login" color="blue.300">
+            Log In
+          </Link>
+        </Text>
+      </VStack>
+    </Box>
   );
 }
 

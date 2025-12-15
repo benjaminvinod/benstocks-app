@@ -14,23 +14,16 @@ requests
 newsdataapi
 
 # --- Security & Auth ---
-passlib==1.7.4
-bcrypt==3.2.0
+passlib[bcrypt]==1.7.4
+bcrypt>=4.0.1,<5
 python-jose[cryptography]
 
 # --- Websockets ---
 websockets
 
 # --- Utilities ---
-# dnspython is often needed for MongoDB Atlas connections
 dnspython
-
-# Ollama LLM Model
-# Llama3.1
-ollama
-
-react-markdown
-remark-gfm
-lightweight-charts
-
 fpdf
+
+# --- Ollama (Python client) ---
+ollama
